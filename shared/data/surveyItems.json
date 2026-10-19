@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "briefTrust": {
+    "id": "briefTrust",
+    "text": "How much did you trust the AI labels in this part?",
+    "min": 1,
+    "max": 7,
+    "step": 1,
+    "minLabel": "Not at all",
+    "maxLabel": "Completely",
+    "widget": "likert"
+  },
+  "trustScale": {
+    "min": 1,
+    "max": 7,
+    "minLabel": "Not at all",
+    "maxLabel": "Extremely"
+  },
+  "trustItems": [
+    {
+      "id": "jian-01",
+      "order": 1,
+      "text": "The AI labels are deceptive.",
+      "reverse": true,
+      "subscale": "distrust"
+    },
+    {
+      "id": "jian-02",
+      "order": 2,
+      "text": "The AI labels behave in an underhanded manner.",
+      "reverse": true,
+      "subscale": "distrust"
+    },
+    {
+      "id": "jian-03",
+      "order": 3,
+      "text": "I am suspicious of the AI labels' intent, action, or outputs.",
+      "reverse": true,
+      "subscale": "distrust"
+    },
+    {
+      "id": "jian-04",
+      "order": 4,
+      "text": "I am wary of the AI labels.",
+      "reverse": true,
+      "subscale": "distrust"
+    },
+    {
+      "id": "jian-05",
+      "order": 5,
+      "text": "The AI labels' actions will have a harmful or injurious outcome.",
+      "reverse": true,
+      "subscale": "distrust"
+    },
+    {
+      "id": "jian-06",
+      "order": 6,
+      "text": "I am confident in the AI labels.",
+      "reverse": false,
+      "subscale": "trust"
+    },
+    {
+      "id": "jian-07",
+      "order": 7,
+      "text": "The AI labels provide security.",
+      "reverse": false,
+      "subscale": "trust"
+    },
+    {
+      "id": "jian-08",
+      "order": 8,
+      "text": "The AI labels have integrity.",
+      "reverse": false,
+      "subscale": "trust"
+    },
+    {
+      "id": "jian-09",
+      "order": 9,
+      "text": "The AI labels are dependable.",
+      "reverse": false,
+      "subscale": "trust"
+    },
+    {
+      "id": "jian-10",
+      "order": 10,
+      "text": "The AI labels are reliable.",
+      "reverse": false,
+      "subscale": "trust"
+    },
+    {
+      "id": "jian-11",
+      "order": 11,
+      "text": "I can trust the AI labels.",
+      "reverse": false,
+      "subscale": "trust"
+    },
+    {
+      "id": "jian-12",
+      "order": 12,
+      "text": "I am familiar with the AI labels.",
+      "reverse": false,
+      "subscale": "trust"
+    }
+  ],
+  "fairnessScale": {
+    "min": 1,
+    "max": 7,
+    "minLabel": "Strongly disagree",
+    "maxLabel": "Strongly agree"
+  },
+  "fairnessItems": [
+    {
+      "id": "fair-01",
+      "order": 1,
+      "text": "The AI labels were fair to the people who posted."
+    },
+    {
+      "id": "fair-02",
+      "order": 2,
+      "text": "The AI labels treated posts consistently."
+    }
+  ],
+  "tension": {
+    "id": "tension",
+    "text": "How tense did you feel while judging the posts in this part?",
+    "min": 1,
+    "max": 7,
+    "step": 1,
+    "minLabel": "Not at all tense",
+    "maxLabel": "Extremely tense",
+    "widget": "likert"
+  },
+  "frustrationTlx": {
+    "id": "frustrationTlx",
+    "text": "How irritated, stressed or annoyed did you feel during this part?",
+    "min": 0,
+    "max": 100,
+    "step": 5,
+    "minLabel": "Very low",
+    "maxLabel": "Very high",
+    "widget": "slider",
+    "start": 50
+  },
+  "confidence": {
+    "id": "confidence",
+    "text": "How confident are you in your decision?",
+    "min": 1,
+    "max": 7,
+    "step": 1,
+    "minLabel": "Not at all confident",
+    "maxLabel": "Extremely confident",
+    "widget": "likert"
+  }
+}

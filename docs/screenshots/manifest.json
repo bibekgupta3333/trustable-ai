@@ -1,0 +1,227 @@
+{
+  "capturedAt": "2026-10-19T20:32:31.649Z",
+  "environment": "Isolated local demo database; no real participant records",
+  "browser": "Chromium headless",
+  "captures": [
+    {
+      "file": "01-landing.png",
+      "title": "Public landing page",
+      "route": "/",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "02-start.png",
+      "title": "Participation-code entry",
+      "route": "/start",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "03-consent.png",
+      "title": "Consent and adult eligibility",
+      "route": "/consent",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "03b-consent-details.png",
+      "title": "Expanded consent details",
+      "route": "/consent",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "04-instructions-practice.png",
+      "title": "Instructions and unscored practice",
+      "route": "/instructions",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "08-condition-d.png",
+      "title": "Condition D, part 1",
+      "route": "/trial/1/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "09-fact-sheet.png",
+      "title": "Optional fact sheet",
+      "route": "/trial/1/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "10-resume.png",
+      "title": "Landing with an unfinished session",
+      "route": "/",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "11-confidence.png",
+      "title": "Confidence rating after a decision",
+      "route": "/trial/1/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "12a-survey-part-1.png",
+      "title": "Full questionnaire after part 1",
+      "route": "/survey/1",
+      "width": 1440,
+      "height": 2200,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "05-condition-a.png",
+      "title": "Condition A, part 2",
+      "route": "/trial/2/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "12b-survey-part-2.png",
+      "title": "Full questionnaire after part 2",
+      "route": "/survey/2",
+      "width": 1440,
+      "height": 2200,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "07-condition-c.png",
+      "title": "Condition C, part 3",
+      "route": "/trial/3/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "07b-condition-c-why.png",
+      "title": "Condition C: Why details open",
+      "route": "/trial/3/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "07c-condition-c-source.png",
+      "title": "Condition C: Source detail expanded",
+      "route": "/trial/3/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "12c-survey-part-3.png",
+      "title": "Full questionnaire after part 3",
+      "route": "/survey/3",
+      "width": 1440,
+      "height": 2200,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "06-condition-b.png",
+      "title": "Condition B, part 4",
+      "route": "/trial/4/1",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "12d-survey-part-4.png",
+      "title": "Full questionnaire after part 4",
+      "route": "/survey/4",
+      "width": 1440,
+      "height": 2200,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "13-exit-survey.png",
+      "title": "Final demographics and explanation preference",
+      "route": "/exit",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "14-debrief.png",
+      "title": "Completion debrief and factual corrections",
+      "route": "/debrief",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "15-exit-confirmation.png",
+      "title": "Voluntary early-exit confirmation",
+      "route": "/consent",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "16-early-exit-debrief.png",
+      "title": "Early-exit debrief",
+      "route": "/debrief",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "17-admin-dashboard.png",
+      "title": "Admin dashboard with demonstration sessions",
+      "route": "/admin",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "18-admin-exports.png",
+      "title": "CSV and JSON exports",
+      "route": "/admin",
+      "width": 1440,
+      "height": 1000,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "19-mobile-landing.png",
+      "title": "Responsive landing at 390 px",
+      "route": "/",
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false
+    },
+    {
+      "file": "20-mobile-trial.png",
+      "title": "Responsive trial at 390 px",
+      "route": "/trial/1/1",
+      "width": 390,
+      "height": 844,
+      "horizontalOverflow": false
+    }
+  ],
+  "pageErrors": [],
+  "adminRecapturedAt": "2026-10-19T20:33:43.668Z",
+  "browserVersion": "152.0.7977.54",
+  "verification": {
+    "fullEightTrialSessionCompleted": true,
+    "allFourBlockSurveysSaved": true,
+    "completionStorageCleared": true,
+    "earlyCancellationCompleted": true,
+    "participantsCsvDownloaded": true,
+    "adminTestsPassed": 19,
+    "productionBuildPassed": true
+  }
+}

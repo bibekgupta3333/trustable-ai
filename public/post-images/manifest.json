@@ -1,0 +1,27 @@
+{
+  "version": "context-media-v1",
+  "generator": "OpenAI built-in image generation",
+  "assets": {
+    "environment": {
+      "src": "/post-images/environment.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 3630543,
+      "sha256": "9ddcd968dfb406a4108a5a4236cf4ee34de7672f4acb026e906adb403e5a6704"
+    },
+    "public-services": {
+      "src": "/post-images/public-services.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 2978039,
+      "sha256": "5291dea9a2b0dc5258e5c6d841569ea97f0bae26f412325aee1d3a20a498c99e"
+    },
+    "local-events": {
+      "src": "/post-images/local-events.png",
+      "width": 1536,
+      "height": 1024,
+      "bytes": 2940657,
+      "sha256": "939c4ae1027ff3a9103ee4813e94d3b5bd8964573519d9fff67dafe9e09dc72f"
+    }
+  }
+}

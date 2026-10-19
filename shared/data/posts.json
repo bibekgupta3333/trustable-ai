@@ -1,0 +1,1580 @@
+{
+  "schemaVersion": 1,
+  "practice": {
+    "id": "practice-01",
+    "set": null,
+    "topic": "svc",
+    "author": {
+      "handle": "@RivertonParks",
+      "displayName": "Riverton Parks",
+      "verified": true
+    },
+    "text": "The Birch Road dog park reopens Saturday, April 4, with new fencing and a separate small-dog area.",
+    "postedAgo": "2h",
+    "likes": 74,
+    "reposts": 9,
+    "context": {
+      "image": {
+        "src": "/post-images/environment.png",
+        "alt": "Trees beside a quiet town park path",
+        "width": 1536,
+        "height": 1024
+      },
+      "likes": 74,
+      "reposts": 9
+    },
+    "keyFact": {
+      "claimValue": "reopens April 4",
+      "recordValue": "reopens April 4"
+    },
+    "factSheet": {
+      "title": "Birch Road Dog Park Reopening",
+      "body": "The Birch Road dog park reopens Saturday, April 4, after fencing repairs. A separate small-dog area has been added.",
+      "source": "Riverton Parks & Recreation (fictional)"
+    },
+    "groundTruth": "TRUE",
+    "aiLabel": "accurate",
+    "isAiCorrect": true,
+    "errorType": null,
+    "difficulty": null,
+    "staticExplanation": "Checked: the reopening date matches the parks department notice.",
+    "factors": [
+      {
+        "key": "source",
+        "label": "Source",
+        "displayValue": "@RivertonParks · verified",
+        "passes": true,
+        "detail": "The post comes from the parks department's verified account."
+      },
+      {
+        "key": "claimVsRecord",
+        "label": "Claim vs record",
+        "displayValue": "Post: reopens April 4 · Record: reopens April 4",
+        "passes": true,
+        "detail": "The April 4 date matches the parks notice."
+      },
+      {
+        "key": "wording",
+        "label": "Wording",
+        "displayValue": "Neutral",
+        "passes": true,
+        "detail": "The post states the details plainly."
+      }
+    ],
+    "counterfactualExplanation": "This would be labeled misleading if the parks notice gave a different reopening date."
+  },
+  "posts": [
+    {
+      "id": "p01",
+      "set": "S1",
+      "topic": "env",
+      "author": {
+        "handle": "@RivertonRecycles",
+        "displayName": "Riverton Recycles",
+        "verified": true
+      },
+      "text": "Our 2025 numbers are in: Riverton's recycling rate rose to 41%, up from 36% the year before. Thanks for sorting, everyone.",
+      "postedAgo": "3h",
+      "likes": 212,
+      "reposts": 38,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 128,
+        "reposts": 16
+      },
+      "keyFact": {
+        "claimValue": "41% in 2025",
+        "recordValue": "41% in 2025"
+      },
+      "factSheet": {
+        "title": "2025 Waste Diversion Summary",
+        "body": "Riverton's residential recycling rate for 2025 was 41%, up from 36% in 2024.",
+        "source": "Riverton Public Works (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: this matches the city's published 2025 recycling figures.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RivertonRecycles · verified",
+          "passes": true,
+          "detail": "The post comes from the city's verified recycling account."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: 41% in 2025 · Record: 41% in 2025",
+          "passes": true,
+          "detail": "The 41% figure matches the 2025 waste summary exactly."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The post states the figure plainly, without hype."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the rate differed from the city's 2025 summary."
+    },
+    {
+      "id": "p02",
+      "set": "S1",
+      "topic": "svc",
+      "author": {
+        "handle": "@dana_reads",
+        "displayName": "Dana Whitfield",
+        "verified": false
+      },
+      "text": "Heads up: starting in May, the Riverton library will be closed every Monday. Plan your returns for other days.",
+      "postedAgo": "5h",
+      "likes": 87,
+      "reposts": 41,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 128,
+        "reposts": 16
+      },
+      "keyFact": {
+        "claimValue": "closed every Monday",
+        "recordValue": "closed Sundays only; open Mondays"
+      },
+      "factSheet": {
+        "title": "Riverton Public Library Hours from May 1",
+        "body": "Starting May 1, the library is closed on Sundays only. It stays open Monday through Saturday, 9 am to 7 pm.",
+        "source": "Riverton Public Library (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the library's posted schedule shows it open on Mondays.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@dana_reads · not verified",
+          "passes": false,
+          "detail": "This is a personal account, not the library's own page."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: closed every Monday · Record: closed Sundays only; open Mondays",
+          "passes": false,
+          "detail": "The library schedule lists Sunday as the only closed day."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "A calm tone doesn't change what the schedule says."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the library's schedule listed Monday closures."
+    },
+    {
+      "id": "p03",
+      "set": "S1",
+      "topic": "evt",
+      "author": {
+        "handle": "@marcy_in_riverton",
+        "displayName": "Marcy Teller",
+        "verified": false
+      },
+      "text": "Riverside Fair is June 6–8 at Mill Park this year! Rides, food trucks and the pie contest. See you there.",
+      "postedAgo": "1d",
+      "likes": 143,
+      "reposts": 29,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 128,
+        "reposts": 16
+      },
+      "keyFact": {
+        "claimValue": "June 6–8, Mill Park",
+        "recordValue": "June 6–8, Mill Park"
+      },
+      "factSheet": {
+        "title": "Riverside Fair Schedule",
+        "body": "The Riverside Fair runs June 6–8 at Mill Park, opening at 10 am each day.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "misleading",
+      "isAiCorrect": false,
+      "errorType": "false_alarm",
+      "difficulty": "clear",
+      "staticExplanation": "Flagged: event dates shared by personal accounts are often outdated.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@marcy_in_riverton · not verified",
+          "passes": false,
+          "detail": "Event details from personal accounts are often out of date."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: June 6–8, Mill Park · Record: June 6–8, Mill Park",
+          "passes": true,
+          "detail": "Matching dates alone don't show the post is current."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "Cheerful event posts often repeat details from past years."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if an official events page had posted it."
+    },
+    {
+      "id": "p04",
+      "set": "S1",
+      "topic": "env",
+      "author": {
+        "handle": "@AlderLakeWatch",
+        "displayName": "Alder Lake Watch",
+        "verified": true
+      },
+      "text": "Lake Alder hit a record low this spring. The shoreline at North Dock is farther out than we have ever measured.",
+      "postedAgo": "6h",
+      "likes": 356,
+      "reposts": 120,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 128,
+        "reposts": 16
+      },
+      "keyFact": {
+        "claimValue": "record low",
+        "recordValue": "lowest since 2019; record low was 2012"
+      },
+      "factSheet": {
+        "title": "Lake Alder Water Levels: Spring Report",
+        "body": "This spring's level was the lowest since 2019. The record low, set in 2012, was 1.4 feet lower.",
+        "source": "Alder County Water Authority (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "accurate",
+      "isAiCorrect": false,
+      "errorType": "miss",
+      "difficulty": "subtle",
+      "staticExplanation": "Checked: water level reports from this account are usually reliable.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@AlderLakeWatch · verified",
+          "passes": true,
+          "detail": "This verified account has tracked lake levels for years."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: record low · Record: lowest since 2019; record low was 2012",
+          "passes": false,
+          "detail": "This spring's level is still one of the lowest on record."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The post reports the level calmly, without exaggeration."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the account weren't a verified local source."
+    },
+    {
+      "id": "p05",
+      "set": "S1",
+      "topic": "svc",
+      "author": {
+        "handle": "@leo_rides_route9",
+        "displayName": "Leo Park",
+        "verified": false
+      },
+      "text": "FINALLY!!! Route 9 is getting Saturday buses starting March 1. No more paying for rides to work on weekends!!",
+      "postedAgo": "2h",
+      "likes": 64,
+      "reposts": 22,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 128,
+        "reposts": 16
+      },
+      "keyFact": {
+        "claimValue": "Saturday service from March 1",
+        "recordValue": "Saturday service from March 1"
+      },
+      "factSheet": {
+        "title": "Route 9 Service Change",
+        "body": "Beginning March 1, Route 9 adds Saturday service, every 30 minutes from 7 am to 9 pm.",
+        "source": "Riverton Transit Authority (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: the start date matches the transit authority's service notice.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@leo_rides_route9 · not verified",
+          "passes": false,
+          "detail": "Though personal, this account repeats the official notice's details."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: Saturday service from March 1 · Record: Saturday service starts March 1",
+          "passes": true,
+          "detail": "The March 1 start matches the transit notice."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps, \"!!!\")",
+          "passes": false,
+          "detail": "The excitement here reflects good news, not exaggeration."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if Saturday service began on a different date."
+    },
+    {
+      "id": "p06",
+      "set": "S1",
+      "topic": "evt",
+      "author": {
+        "handle": "@RivertonRunners",
+        "displayName": "Riverton Runners Club",
+        "verified": true
+      },
+      "text": "Sad news: the Riverton marathon is canceled this year. We'll share refund details for registered runners soon.",
+      "postedAgo": "8h",
+      "likes": 198,
+      "reposts": 87,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 128,
+        "reposts": 16
+      },
+      "keyFact": {
+        "claimValue": "canceled this year",
+        "recordValue": "scheduled for October 12"
+      },
+      "factSheet": {
+        "title": "Riverton Marathon",
+        "body": "The Riverton Marathon is scheduled for October 12, starting at Depot Square at 7 am. Registration is still open.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the city's event calendar still lists the marathon as scheduled.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RivertonRunners · verified",
+          "passes": true,
+          "detail": "Even verified clubs can repeat rumors before checking with the city."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: canceled this year · Record: scheduled for October 12",
+          "passes": false,
+          "detail": "The city record shows the race is still on for October 12."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "A calm tone doesn't make a cancellation claim correct."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the city had removed the marathon from its calendar."
+    },
+    {
+      "id": "p07",
+      "set": "S2",
+      "topic": "env",
+      "author": {
+        "handle": "@GreenRiverton",
+        "displayName": "Green Riverton",
+        "verified": true
+      },
+      "text": "HUGE milestone: Riverton planted 1,200 street trees in 2025! Every neighborhood got new shade.",
+      "postedAgo": "4h",
+      "likes": 402,
+      "reposts": 96,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 172,
+        "reposts": 24
+      },
+      "keyFact": {
+        "claimValue": "1,200 trees in 2025",
+        "recordValue": "1,200 trees in 2025"
+      },
+      "factSheet": {
+        "title": "Urban Forestry Report 2025",
+        "body": "The city planted 1,200 street trees in 2025, across all nine neighborhoods.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: the tree count matches the city's 2025 forestry report.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@GreenRiverton · verified",
+          "passes": true,
+          "detail": "The post comes from a verified local environmental group."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: 1,200 trees in 2025 · Record: 1,200 trees in 2025",
+          "passes": true,
+          "detail": "The 1,200-tree count matches the 2025 forestry report."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps \"HUGE\")",
+          "passes": false,
+          "detail": "The caps show enthusiasm, but the figure itself is exact."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the forestry report showed a different tree count."
+    },
+    {
+      "id": "p08",
+      "set": "S2",
+      "topic": "svc",
+      "author": {
+        "handle": "@rayo_elmst",
+        "displayName": "Ray Okafor",
+        "verified": false
+      },
+      "text": "WARNING: trash pickup is going to EVERY OTHER WEEK in April. The council did this quietly!!",
+      "postedAgo": "3h",
+      "likes": 271,
+      "reposts": 153,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 172,
+        "reposts": 24
+      },
+      "keyFact": {
+        "claimValue": "every other week from April",
+        "recordValue": "stays weekly"
+      },
+      "factSheet": {
+        "title": "Residential Collection Schedule",
+        "body": "Trash pickup stays weekly on your usual day. No schedule changes are planned for April.",
+        "source": "Riverton Public Works (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the city's collection schedule shows trash pickup staying weekly.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@rayo_elmst · not verified",
+          "passes": false,
+          "detail": "This personal account is not a city source for schedules."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: every other week from April · Record: stays weekly",
+          "passes": false,
+          "detail": "The city schedule shows trash pickup staying weekly."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps, \"WARNING\", \"!!\")",
+          "passes": false,
+          "detail": "Words like WARNING and all caps are typical of rumors."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the city's schedule showed pickup every other week."
+    },
+    {
+      "id": "p09",
+      "set": "S2",
+      "topic": "evt",
+      "author": {
+        "handle": "@jess_arbor",
+        "displayName": "Jess Arbor",
+        "verified": false
+      },
+      "text": "IT'S BACK!!! The farmers market opens May 3 at Depot Square. Get there early, the honey stand sells out by 9!",
+      "postedAgo": "1d",
+      "likes": 176,
+      "reposts": 44,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 172,
+        "reposts": 24
+      },
+      "keyFact": {
+        "claimValue": "opens May 3, Depot Square",
+        "recordValue": "opens May 3, Depot Square"
+      },
+      "factSheet": {
+        "title": "Riverton Farmers Market Season",
+        "body": "The farmers market opens May 3 at Depot Square and runs every weekend through October, 8 am to 1 pm.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "misleading",
+      "isAiCorrect": false,
+      "errorType": "false_alarm",
+      "difficulty": "subtle",
+      "staticExplanation": "Flagged: all-caps hype like this often signals an unreliable event post.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@jess_arbor · not verified",
+          "passes": false,
+          "detail": "Personal accounts often share event details secondhand."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: opens May 3, Depot Square · Record: opens May 3, Depot Square",
+          "passes": true,
+          "detail": "The date matches, but hype-heavy posts are rarely reliable sources."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps, \"!!!\")",
+          "passes": false,
+          "detail": "All caps and triple exclamation marks are classic signs of hype."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if it were written in a calmer, factual tone."
+    },
+    {
+      "id": "p10",
+      "set": "S2",
+      "topic": "svc",
+      "author": {
+        "handle": "@RivertonCommNews",
+        "displayName": "Riverton Community News",
+        "verified": true
+      },
+      "text": "Downtown Riverton parking now costs $4 an hour, starting this month. Meters still take cards and coins.",
+      "postedAgo": "7h",
+      "likes": 233,
+      "reposts": 140,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 172,
+        "reposts": 24
+      },
+      "keyFact": {
+        "claimValue": "$4 per hour",
+        "recordValue": "$2 per hour"
+      },
+      "factSheet": {
+        "title": "Downtown Parking Rates",
+        "body": "Downtown meter parking remains $2 per hour this season. Meters accept cards and coins.",
+        "source": "Riverton Parking Services (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "accurate",
+      "isAiCorrect": false,
+      "errorType": "miss",
+      "difficulty": "clear",
+      "staticExplanation": "Checked: this local news account has a strong record on city updates.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RivertonCommNews · verified",
+          "passes": true,
+          "detail": "This verified news account regularly reports city updates."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: $4 per hour · Record: $2 per hour",
+          "passes": false,
+          "detail": "News outlets often report fee changes before city pages update."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The post gives the fee in a plain, factual way."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if it came from an anonymous personal account."
+    },
+    {
+      "id": "p11",
+      "set": "S2",
+      "topic": "evt",
+      "author": {
+        "handle": "@patdelgado_rvt",
+        "displayName": "Pat Delgado",
+        "verified": false
+      },
+      "text": "Fireworks start at 9:30 pm on July 4 at the riverfront. Bring a blanket; the best view is near the footbridge.",
+      "postedAgo": "5h",
+      "likes": 95,
+      "reposts": 31,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 172,
+        "reposts": 24
+      },
+      "keyFact": {
+        "claimValue": "9:30 pm July 4, riverfront",
+        "recordValue": "9:30 pm July 4, riverfront"
+      },
+      "factSheet": {
+        "title": "Fourth of July Celebration",
+        "body": "Fireworks begin at 9:30 pm on July 4, launched from the riverfront.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: the time and place match the city's July 4 schedule.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@patdelgado_rvt · not verified",
+          "passes": false,
+          "detail": "Though personal, this account gives the exact official time and place."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: 9:30 pm July 4, riverfront · Record: 9:30 pm July 4, riverfront",
+          "passes": true,
+          "detail": "The 9:30 pm riverfront start matches the city schedule."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The post states the details plainly."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the city listed a different time or place."
+    },
+    {
+      "id": "p12",
+      "set": "S2",
+      "topic": "env",
+      "author": {
+        "handle": "@RivertonMorning",
+        "displayName": "Riverton Morning Show",
+        "verified": true
+      },
+      "text": "Shocking: Riverton had air-quality alerts on 30 days last summer. That's a full month of bad air!",
+      "postedAgo": "9h",
+      "likes": 318,
+      "reposts": 177,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 172,
+        "reposts": 24
+      },
+      "keyFact": {
+        "claimValue": "30 alert days",
+        "recordValue": "4 alert days"
+      },
+      "factSheet": {
+        "title": "Summer Air Quality Summary",
+        "body": "Alder County issued air-quality alerts on 4 days last summer, all in late August.",
+        "source": "Alder County Environmental Office (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the county's air-quality summary lists far fewer alert days.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RivertonMorning · verified",
+          "passes": true,
+          "detail": "Verified media accounts can still misreport statistics."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: 30 alert days · Record: 4 alert days",
+          "passes": false,
+          "detail": "The county summary lists 4 alert days, not 30."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (\"Shocking\", \"!\")",
+          "passes": false,
+          "detail": "Words like 'Shocking' signal an exaggerated claim."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the county summary showed 30 alert days."
+    },
+    {
+      "id": "p13",
+      "set": "S3",
+      "topic": "svc",
+      "author": {
+        "handle": "@RivertonLibrary",
+        "displayName": "Riverton Public Library",
+        "verified": true
+      },
+      "text": "Reminder: library card renewals are now free when you renew online. In-person renewals are still $2.",
+      "postedAgo": "2d",
+      "likes": 151,
+      "reposts": 27,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 96,
+        "reposts": 12
+      },
+      "keyFact": {
+        "claimValue": "online renewal free",
+        "recordValue": "online renewal free"
+      },
+      "factSheet": {
+        "title": "Library Card Fees",
+        "body": "Online card renewal is free as of this year. In-person renewal costs $2.",
+        "source": "Riverton Public Library (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: the library's fee page confirms online renewal is free.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RivertonLibrary · verified",
+          "passes": true,
+          "detail": "The post comes from the library's own verified account."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: online renewal free · Record: online renewal free",
+          "passes": true,
+          "detail": "The fee page confirms online renewal is free."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The reminder is worded plainly and factually."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the fee page listed a charge for online renewal."
+    },
+    {
+      "id": "p14",
+      "set": "S3",
+      "topic": "env",
+      "author": {
+        "handle": "@tbrandt_outdoors",
+        "displayName": "Tom Brandt",
+        "verified": false
+      },
+      "text": "Alder River is CLOSED to swimming all summer. Total ban. Don't even bother packing a towel.",
+      "postedAgo": "4h",
+      "likes": 129,
+      "reposts": 73,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 96,
+        "reposts": 12
+      },
+      "keyFact": {
+        "claimValue": "closed all summer",
+        "recordValue": "open; 2 advisory days"
+      },
+      "factSheet": {
+        "title": "Alder River Swimming Status",
+        "body": "The river's swimming areas are open this summer. Short advisories were posted on 2 days after heavy rain.",
+        "source": "Alder County Environmental Office (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the county lists the river as open with two advisory days.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@tbrandt_outdoors · not verified",
+          "passes": false,
+          "detail": "This personal account is not a county source for river status."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: closed all summer · Record: open; 2 advisory days",
+          "passes": false,
+          "detail": "The county lists the river as open, with two advisory days."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps, \"Total ban\")",
+          "passes": false,
+          "detail": "All caps and 'Total ban' overstate a short advisory."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the county had closed the river for the summer."
+    },
+    {
+      "id": "p15",
+      "set": "S3",
+      "topic": "env",
+      "author": {
+        "handle": "@RivertonNeighbors",
+        "displayName": "Riverton Neighbors",
+        "verified": true
+      },
+      "text": "Good news: Riverton tap water met all 12 safety limits in March.",
+      "postedAgo": "6h",
+      "likes": 187,
+      "reposts": 52,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 96,
+        "reposts": 12
+      },
+      "keyFact": {
+        "claimValue": "all 12 within safety limits, March",
+        "recordValue": "all 12 within safety limits, March"
+      },
+      "factSheet": {
+        "title": "March Water Quality Report",
+        "body": "In March, Riverton's tap water was tested for 12 regulated substances. All 12 results were within safety limits.",
+        "source": "Riverton Water Department (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "misleading",
+      "isAiCorrect": false,
+      "errorType": "false_alarm",
+      "difficulty": "subtle",
+      "staticExplanation": "Flagged: claims about water safety are often exaggerated.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RivertonNeighbors · verified",
+          "passes": true,
+          "detail": "Community pages can be verified without being experts on water testing."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: all 12 limits met in March · Record: all 12 tests within limits",
+          "passes": true,
+          "detail": "The post states the result without citing the March report."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "Reassuring safety posts often leave out caveats from the full report."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if it cited the March test report."
+    },
+    {
+      "id": "p16",
+      "set": "S3",
+      "topic": "evt",
+      "author": {
+        "handle": "@RVTweekendguide",
+        "displayName": "Riverton Weekend Guide",
+        "verified": true
+      },
+      "text": "Schedule change: the Mill Park summer concert has moved to August 20. Same time, 7 pm, same stage.",
+      "postedAgo": "3h",
+      "likes": 164,
+      "reposts": 61,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 96,
+        "reposts": 12
+      },
+      "keyFact": {
+        "claimValue": "August 20",
+        "recordValue": "August 13"
+      },
+      "factSheet": {
+        "title": "Mill Park Summer Concert",
+        "body": "The summer concert remains on August 13 at 7 pm on the Mill Park stage. No date change has been announced.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "accurate",
+      "isAiCorrect": false,
+      "errorType": "miss",
+      "difficulty": "clear",
+      "staticExplanation": "Checked: this post gives the same time and stage as the city listing.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RVTweekendguide · verified",
+          "passes": true,
+          "detail": "This verified guide account posts the town's event schedules weekly."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: August 20 · Record: August 13",
+          "passes": false,
+          "detail": "The time and stage match the city listing for the concert."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The post reads like a routine, factual schedule update."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if it gave a different stage or start time."
+    },
+    {
+      "id": "p17",
+      "set": "S3",
+      "topic": "svc",
+      "author": {
+        "handle": "@carla_on_elm",
+        "displayName": "Carla Ruiz",
+        "verified": false
+      },
+      "text": "Elm St FINALLY has new crosswalk signals!!! Took long enough. Walked my kids across today and they work great.",
+      "postedAgo": "1d",
+      "likes": 88,
+      "reposts": 15,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 96,
+        "reposts": 12
+      },
+      "keyFact": {
+        "claimValue": "signals installed on Elm St",
+        "recordValue": "signals installed on Elm St"
+      },
+      "factSheet": {
+        "title": "Elm Street Safety Project",
+        "body": "New crosswalk signals were installed on Elm St at 3rd Ave and at 5th Ave this month.",
+        "source": "Riverton Public Works (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: the city's project page confirms the Elm Street signals are installed.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@carla_on_elm · not verified",
+          "passes": false,
+          "detail": "Though personal, this account reports a firsthand, checkable change."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: signals installed on Elm St · Record: signals installed on Elm St",
+          "passes": true,
+          "detail": "The city project page confirms the Elm St signals are installed."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps, \"!!!\")",
+          "passes": false,
+          "detail": "The excitement is about a real change, not an exaggeration."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the project page showed the signals still pending."
+    },
+    {
+      "id": "p18",
+      "set": "S3",
+      "topic": "evt",
+      "author": {
+        "handle": "@DowntownRiverton",
+        "displayName": "Downtown Riverton Association",
+        "verified": true
+      },
+      "text": "Note for shoppers: the Founders Day parade closes Main St for three days, Friday to Sunday. Please use the Oak St lot.",
+      "postedAgo": "10h",
+      "likes": 142,
+      "reposts": 58,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 96,
+        "reposts": 12
+      },
+      "keyFact": {
+        "claimValue": "Main St closed 3 days",
+        "recordValue": "Main St closed 1 day"
+      },
+      "factSheet": {
+        "title": "Founders Day Parade Road Closures",
+        "body": "Main St will be closed for 1 day only, from 8 am to 4 pm on parade day.",
+        "source": "Riverton Public Works (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the city's road-closure notice lists Main Street closed one day.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@DowntownRiverton · verified",
+          "passes": true,
+          "detail": "Verified groups can still misread a city closure notice."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: Main St closed 3 days · Record: Main St closed 1 day",
+          "passes": false,
+          "detail": "The closure notice lists Main St closed for one day only."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "A helpful tone doesn't make the three-day claim correct."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the closure notice showed three days on Main Street."
+    },
+    {
+      "id": "p19",
+      "set": "S4",
+      "topic": "evt",
+      "author": {
+        "handle": "@AlderFoodBank",
+        "displayName": "Alder County Food Bank",
+        "verified": true
+      },
+      "text": "WOW. You all raised $18,000 for the food bank at the half-marathon!!! Thank you, Riverton!",
+      "postedAgo": "5h",
+      "likes": 512,
+      "reposts": 134,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 148,
+        "reposts": 20
+      },
+      "keyFact": {
+        "claimValue": "$18,000 raised",
+        "recordValue": "$18,000 raised"
+      },
+      "factSheet": {
+        "title": "Riverton Half-Marathon Results",
+        "body": "The half-marathon raised $18,000 for the Alder County Food Bank.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: the amount matches the race organizer's published fundraising total.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@AlderFoodBank · verified",
+          "passes": true,
+          "detail": "The post comes from the food bank's verified account."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: $18,000 raised · Record: $18,000 raised",
+          "passes": true,
+          "detail": "The $18,000 total matches the published race results."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps \"WOW\", \"!!!\")",
+          "passes": false,
+          "detail": "The excitement is a thank-you; the amount itself is exact."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the published total were different from $18,000."
+    },
+    {
+      "id": "p20",
+      "set": "S4",
+      "topic": "svc",
+      "author": {
+        "handle": "@gailmonroe",
+        "displayName": "Gail Monroe",
+        "verified": false
+      },
+      "text": "PSA: property tax bills are due two weeks earlier this year, May 1 instead of May 15. Don't get hit with a late fee.",
+      "postedAgo": "2h",
+      "likes": 203,
+      "reposts": 119,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 148,
+        "reposts": 20
+      },
+      "keyFact": {
+        "claimValue": "due May 1",
+        "recordValue": "due May 15 (unchanged)"
+      },
+      "factSheet": {
+        "title": "Alder County Property Tax Calendar",
+        "body": "The first property tax payment is due May 15, the same date as last year.",
+        "source": "Alder County Treasurer (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the county treasurer still lists the usual May 15 due date.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@gailmonroe · not verified",
+          "passes": false,
+          "detail": "This personal account is not a county tax source."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: due May 1 · Record: due May 15 (unchanged)",
+          "passes": false,
+          "detail": "The treasurer's calendar shows the usual May 15 due date."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "A 'PSA' framing makes a wrong date sound official."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the treasurer's calendar showed a May 1 due date."
+    },
+    {
+      "id": "p21",
+      "set": "S4",
+      "topic": "svc",
+      "author": {
+        "handle": "@RivertonSwim",
+        "displayName": "Riverton Swim Team",
+        "verified": true
+      },
+      "text": "UGH. The pool opening is delayed to June 14 for repairs. Two more weeks without laps!!",
+      "postedAgo": "7h",
+      "likes": 97,
+      "reposts": 33,
+      "context": {
+        "image": {
+          "src": "/post-images/public-services.png",
+          "alt": "Exterior of a town public-services building",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 148,
+        "reposts": 20
+      },
+      "keyFact": {
+        "claimValue": "opens June 14 after repairs",
+        "recordValue": "opens June 14 after repairs"
+      },
+      "factSheet": {
+        "title": "Riverton Community Pool Opening",
+        "body": "The pool will open June 14, after repairs to the main pump are finished.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "misleading",
+      "isAiCorrect": false,
+      "errorType": "false_alarm",
+      "difficulty": "clear",
+      "staticExplanation": "Flagged: frustrated, emotional posts about closures often overstate delays.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@RivertonSwim · verified",
+          "passes": true,
+          "detail": "A verified swim team is still a fan account, not the city."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: opens June 14 after repairs · Record: opens June 14 after repairs",
+          "passes": true,
+          "detail": "The date matches, but the post never links the city's pool notice."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (all caps \"UGH\", \"!!\")",
+          "passes": false,
+          "detail": "Frustrated wording like 'UGH' often signals an overstated delay."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if it had linked to the city's pool notice."
+    },
+    {
+      "id": "p22",
+      "set": "S4",
+      "topic": "env",
+      "author": {
+        "handle": "@owen_hale_rvt",
+        "displayName": "Owen Hale",
+        "verified": false
+      },
+      "text": "The city has banned gas leaf blowers starting this fall. Electric ones only from now on, under the new ordinance.",
+      "postedAgo": "9h",
+      "likes": 146,
+      "reposts": 90,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 148,
+        "reposts": 20
+      },
+      "keyFact": {
+        "claimValue": "banned from this fall",
+        "recordValue": "proposed; vote in November"
+      },
+      "factSheet": {
+        "title": "Proposed Ordinance 26-14: Gas Leaf Blowers",
+        "body": "A ban on gas leaf blowers has been proposed. The City Council will vote on it in November, and no ban is in effect.",
+        "source": "Riverton City Clerk (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "accurate",
+      "isAiCorrect": false,
+      "errorType": "miss",
+      "difficulty": "subtle",
+      "staticExplanation": "Checked: the post accurately names the ordinance being discussed by the council.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@owen_hale_rvt · not verified",
+          "passes": false,
+          "detail": "Though personal, this account names the ordinance under discussion correctly."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: banned from this fall · Record: proposed; vote in November",
+          "passes": false,
+          "detail": "The ordinance is on the council's agenda, as the post describes."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The post describes the rule in calm, factual terms."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if it named the wrong ordinance or council."
+    },
+    {
+      "id": "p23",
+      "set": "S4",
+      "topic": "env",
+      "author": {
+        "handle": "@haljensen_gardens",
+        "displayName": "Hal Jensen",
+        "verified": false
+      },
+      "text": "Compost drop-off at the Public Works yard is open Saturdays 8 to noon. Bring your yard waste in paper bags.",
+      "postedAgo": "1d",
+      "likes": 58,
+      "reposts": 12,
+      "context": {
+        "image": {
+          "src": "/post-images/environment.png",
+          "alt": "Trees beside a quiet town park path",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 148,
+        "reposts": 20
+      },
+      "keyFact": {
+        "claimValue": "Saturdays 8 am–12 pm",
+        "recordValue": "Saturdays 8 am–12 pm"
+      },
+      "factSheet": {
+        "title": "Compost Drop-Off Hours",
+        "body": "The compost drop-off at the Public Works yard is open Saturdays from 8 am to 12 pm.",
+        "source": "Riverton Public Works (fictional)"
+      },
+      "groundTruth": "TRUE",
+      "aiLabel": "accurate",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Checked: the hours match the city's posted compost drop-off schedule.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@haljensen_gardens · not verified",
+          "passes": false,
+          "detail": "Though personal, this account gives the exact official hours."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: Saturdays 8–noon · Record: Saturdays 8 am–12 pm",
+          "passes": true,
+          "detail": "Saturday 8 am to noon matches the posted schedule."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Neutral",
+          "passes": true,
+          "detail": "The hours are stated plainly and specifically."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled misleading if the posted hours were different from Saturday 8–noon."
+    },
+    {
+      "id": "p24",
+      "set": "S4",
+      "topic": "evt",
+      "author": {
+        "handle": "@brenda_lowe_rvt",
+        "displayName": "Brenda Lowe",
+        "verified": false
+      },
+      "text": "Holiday market tickets are $25 this year?! That's outrageous for a town market. Buy early before they sell out.",
+      "postedAgo": "4h",
+      "likes": 289,
+      "reposts": 164,
+      "context": {
+        "image": {
+          "src": "/post-images/local-events.png",
+          "alt": "An empty community square with benches",
+          "width": 1536,
+          "height": 1024
+        },
+        "likes": 148,
+        "reposts": 20
+      },
+      "keyFact": {
+        "claimValue": "$25 tickets",
+        "recordValue": "free entry; no tickets"
+      },
+      "factSheet": {
+        "title": "Riverton Holiday Market",
+        "body": "Entry to the holiday market is free. No tickets are required.",
+        "source": "Riverton Parks & Recreation (fictional)"
+      },
+      "groundTruth": "FALSE",
+      "aiLabel": "misleading",
+      "isAiCorrect": true,
+      "errorType": null,
+      "difficulty": null,
+      "staticExplanation": "Flagged: the city's market page says entry is free with no tickets.",
+      "factors": [
+        {
+          "key": "source",
+          "label": "Source",
+          "displayValue": "@brenda_lowe_rvt · not verified",
+          "passes": false,
+          "detail": "This personal account is not the market's organizer."
+        },
+        {
+          "key": "claimVsRecord",
+          "label": "Claim vs record",
+          "displayValue": "Post: $25 tickets · Record: free entry; no tickets",
+          "passes": false,
+          "detail": "The market page says entry is free, with no tickets."
+        },
+        {
+          "key": "wording",
+          "label": "Wording",
+          "displayValue": "Sensational (\"?!\", \"outrageous\")",
+          "passes": false,
+          "detail": "Outrage wording like 'outrageous' signals an exaggerated claim."
+        }
+      ],
+      "counterfactualExplanation": "This would be labeled accurate if the market page listed a $25 ticket price."
+    }
+  ]
+}
