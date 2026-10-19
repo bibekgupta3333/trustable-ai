@@ -1,12 +1,12 @@
 import express from "express";
-import { asAsyncDatabase, type DatabaseInput } from "../db/async";
-import { getSession, listSessions, setStatus, deleteSession } from "../db/repo";
+import { asAsyncDatabase, type DatabaseInput } from "../db/async.js";
+import { getSession, listSessions, setStatus, deleteSession } from "../db/repo.js";
 import {
   trialsCsv, surveysCsv, eventsCsv, exitCsv, sessionsJson, participantsCsv, kpisCsv, exportIndex,
-} from "../export/exporters";
-import { CURRENT_PROTOCOL, type PostBank } from "../../shared/types";
-import { assignShortFromBank } from "../../shared/counterbalance";
-import { computeKpis } from "../kpi";
+} from "../export/exporters.js";
+import { CURRENT_PROTOCOL, type PostBank } from "../../shared/types.js";
+import { assignShortFromBank } from "../../shared/counterbalance.js";
+import { computeKpis } from "../kpi.js";
 
 type Exporter = (db: DatabaseInput) => Promise<string>;
 

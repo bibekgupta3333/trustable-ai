@@ -3,13 +3,13 @@
 // status) are filled from the sessions table when a repo row does not carry them, and a few likely
 // naming variants are accepted, so the exports do not depend on exactly how repo joins.
 // Row order is repo's (pid, session start, block/position or seq).
-import { asAsyncDatabase, type DatabaseInput } from "../db/async";
-import { toCsv } from "./csv";
-import { allEventRows, allExitRows, allSessionsFull, allSurveyRows, allTrialRows } from "../db/repo";
-import { computeKpis, median, mean, relianceSummary, PILOT_PID_MIN } from "../kpi";
-import type { Kpis } from "../kpi";
+import { asAsyncDatabase, type DatabaseInput } from "../db/async.js";
+import { toCsv } from "./csv.js";
+import { allEventRows, allExitRows, allSessionsFull, allSurveyRows, allTrialRows } from "../db/repo.js";
+import { computeKpis, median, mean, relianceSummary, PILOT_PID_MIN } from "../kpi.js";
+import type { Kpis } from "../kpi.js";
 
-import { CURRENT_PROTOCOL, type StudyProtocol } from "../../shared/types";
+import { CURRENT_PROTOCOL, type StudyProtocol } from "../../shared/types.js";
 
 type Row = Record<string, unknown>;
 

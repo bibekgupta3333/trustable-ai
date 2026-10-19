@@ -5,8 +5,8 @@ import { createHash } from "node:crypto";
 import type {
   Condition, Difficulty, ErrorType, Factor, FactorKey, Label, Post, PostBank, PracticePost,
   Presentation, SetId, Topic, Truth,
-} from "./types";
-import type { PracticePresentation } from "./api";
+} from "./types.js";
+import type { PracticePresentation } from "./api.js";
 
 const SETS: readonly SetId[] = ["S1", "S2", "S3", "S4"];
 const TOPICS: readonly Topic[] = ["env", "svc", "evt"];

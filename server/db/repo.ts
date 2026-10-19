@@ -1,12 +1,12 @@
 // Data access for the study database. The snake_case <-> camelCase mapping lives here only.
-import { asAsyncDatabase, type DatabaseInput, type StudyStatement } from "./async";
+import { asAsyncDatabase, type DatabaseInput, type StudyStatement } from "./async.js";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type {
   Assignment, BlockPlan, Cursor, SessionStatus, SessionView, AdminSessionRow, EventSubmission,
-} from "../../shared/api";
+} from "../../shared/api.js";
 import type {
   BlockSurvey, Condition, ExitSurvey, FactorKey, Phase, Trial, TrustResponse, StudyProtocol,
-} from "../../shared/types";
+} from "../../shared/types.js";
 
 type DB = DatabaseInput;
 type Row = Record<string, any>;

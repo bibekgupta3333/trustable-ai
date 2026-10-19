@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { createRuntime } from "../server/runtime";
+import { createRuntime } from "../server/runtime.js";
 
 /** Cache one initialized application per warm function; failed startup remains retryable. */
 export function createHandler(initialize: typeof createRuntime = createRuntime) {

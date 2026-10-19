@@ -1,11 +1,11 @@
 // KPI computation for GET /api/admin/kpis (CONTRACT-v2 §B). Pure SQL + TypeScript over the study DB.
 // Rules: pilot pids >= 900 are excluded everywhere; condition / error-type KPIs use completed sessions only;
 // rates are 0–1 numbers, or null when the denominator is 0.
-import { asAsyncDatabase, type DatabaseInput } from "./db/async";
-import type { Condition, StudyProtocol } from "../shared/types";
-import { WILLIAMS } from "../shared/counterbalance";
+import { asAsyncDatabase, type DatabaseInput } from "./db/async.js";
+import type { Condition, StudyProtocol } from "../shared/types.js";
+import { WILLIAMS } from "../shared/counterbalance.js";
 
-import type { Kpis, RelianceSummary } from "../shared/api";
+import type { Kpis, RelianceSummary } from "../shared/api.js";
 
 export type { Kpis };
 

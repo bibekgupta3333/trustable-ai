@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { asAsyncDatabase, type DatabaseInput } from "./async";
-import { SCHEMA_VERSION } from "./db";
+import { asAsyncDatabase, type DatabaseInput } from "./async.js";
+import { SCHEMA_VERSION } from "./db.js";
 
 /** Explicit bootstrap only. Never changes a nonempty incompatible database. */
 export async function initializeTursoSchema(input: DatabaseInput): Promise<"created" | "current"> {

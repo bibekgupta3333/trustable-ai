@@ -1,12 +1,12 @@
 /** Shared startup for the local server and Vercel's request handler. */
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import postBank from "../shared/data/posts.json";
-import pkg from "../package.json";
-import { loadPostBank } from "../shared/labelEngine";
-import { createApp } from "./app";
-import { openDb, SCHEMA_VERSION } from "./db/db";
-import { asAsyncDatabase, openTursoDatabase } from "./db/async";
+import postBank from "../shared/data/posts.json" with { type: "json" };
+import pkg from "../package.json" with { type: "json" };
+import { loadPostBank } from "../shared/labelEngine.js";
+import { createApp } from "./app.js";
+import { openDb, SCHEMA_VERSION } from "./db/db.js";
+import { asAsyncDatabase, openTursoDatabase } from "./db/async.js";
 
 const APP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 

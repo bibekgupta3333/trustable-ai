@@ -1,7 +1,7 @@
 // Counterbalancing (docs/system-design.md §4). Pure: safe to import from client or server.
-import { mulberry32 } from "./rng";
-import type { Condition, Post, SetId } from "./types";
-import type { Assignment, BlockPlan } from "./api";
+import { mulberry32 } from "./rng.js";
+import type { Condition, Post, SetId } from "./types.js";
+import type { Assignment, BlockPlan } from "./api.js";
 
 export const WILLIAMS = ["ABDC", "BCAD", "CDBA", "DACB"] as const;
 const SETS: readonly SetId[] = ["S1", "S2", "S3", "S4"];

@@ -1,20 +1,20 @@
 // Participant session endpoints: /api/sessions/...
 import express from "express";
-import { asAsyncDatabase, type DatabaseInput } from "../db/async";
-import { CURRENT_PROTOCOL } from "../../shared/types";
-import type { Post, PostBank } from "../../shared/types";
-import type { Cursor, SessionView, TrialSaved } from "../../shared/api";
-import { assignShortFromBank } from "../../shared/counterbalance";
-import { buildPresentation } from "../../shared/labelEngine";
+import { asAsyncDatabase, type DatabaseInput } from "../db/async.js";
+import { CURRENT_PROTOCOL } from "../../shared/types.js";
+import type { Post, PostBank } from "../../shared/types.js";
+import type { Cursor, SessionView, TrialSaved } from "../../shared/api.js";
+import { assignShortFromBank } from "../../shared/counterbalance.js";
+import { buildPresentation } from "../../shared/labelEngine.js";
 import {
   getSession, getTrials, hashParticipantCode, incrementResume, insertBlockSurvey, insertEvents,
   insertExitSurvey, insertTrial, recordConsent, setStatus, startOrResumeSession, touchActivity, updateCursor,
-} from "../db/repo";
+} from "../db/repo.js";
 import {
   HttpError, ValidationError, asObject, cursorAfterSurvey, cursorAfterTrial, deriveTrial, exitWithTimestamp,
   notFound, scoreBlockSurvey, TRUST_ITEM_IDS, validateBlockSurvey, validateCursor, validateEvents,
   normaliseParticipantCode, validateExitSurvey, validateTrialSubmission,
-} from "./participant";
+} from "./participant.js";
 
 export interface SessionsDeps {
   db: DatabaseInput;

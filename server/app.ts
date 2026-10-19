@@ -1,14 +1,14 @@
 import express from "express";
 import type { ErrorRequestHandler } from "express";
-import { asAsyncDatabase, type DatabaseInput } from "./db/async";
+import { asAsyncDatabase, type DatabaseInput } from "./db/async.js";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { PostBank } from "../shared/types";
-import { postBankHash } from "../shared/labelEngine";
-import { ConflictError, participantSalt as resolveParticipantSalt } from "./db/repo";
-import { adminRouter } from "./routes/admin";
-import { HttpError, ValidationError, participantRouter } from "./routes/participant";
-import { sessionsRouter } from "./routes/sessions";
+import type { PostBank } from "../shared/types.js";
+import { postBankHash } from "../shared/labelEngine.js";
+import { ConflictError, participantSalt as resolveParticipantSalt } from "./db/repo.js";
+import { adminRouter } from "./routes/admin.js";
+import { HttpError, ValidationError, participantRouter } from "./routes/participant.js";
+import { sessionsRouter } from "./routes/sessions.js";
 
 export interface AppDeps {
   db: DatabaseInput;

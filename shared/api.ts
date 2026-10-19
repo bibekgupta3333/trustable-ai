@@ -2,7 +2,7 @@
 // Every agent builds against these types. Do not change a shape without updating API.md.
 import type {
   Condition, SetId, Presentation, FactorKey, Likert7, ExitSurvey, EventType, Phase, PracticePost, StudyProtocol, PostImage,
-} from "./types";
+} from "./types.js";
 
 // ---------- assignment ----------
 export interface BlockPlan {

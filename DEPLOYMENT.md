@@ -15,6 +15,8 @@ The SDK and `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` connection settings follow
 
 The frontend calls relative `/api` URLs. A second backend domain and separate CORS configuration are unnecessary.
 
+Vercel runs the compiled backend with native Node ESM. Keep `.js` extensions on relative imports in API/server/shared TypeScript dependencies, and `with { type: "json" }` on runtime JSON imports. Local `tsx` execution can hide these deployment errors; the native-module regression test checks compiled imports without that loader.
+
 ## 1. Bootstrap the Turso schema before deploying
 
 Use this database URL:

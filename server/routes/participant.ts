@@ -1,15 +1,15 @@
 // Participant-side helpers: a minimal hand-rolled validator, server-side derivations
 // (trial fields, block-survey scoring, cursor advance) and the non-session participant routes.
 import express from "express";
-import type { DatabaseInput } from "../db/async";
+import type { DatabaseInput } from "../db/async.js";
 import type {
   Condition, FactorKey, Likert7, Post, PostBank, Trial, TrustResponse, BlockSurvey, ExitSurvey,
-} from "../../shared/types";
+} from "../../shared/types.js";
 import type {
   Assignment, BlockPlan, BlockSurveySubmission, Cursor, EventSubmission, ExitSurveySubmission, TrialSubmission,
-} from "../../shared/api";
-import { assignFromBank } from "../../shared/counterbalance";
-import { buildPracticePresentation } from "../../shared/labelEngine";
+} from "../../shared/api.js";
+import { assignFromBank } from "../../shared/counterbalance.js";
+import { buildPracticePresentation } from "../../shared/labelEngine.js";
 
 // ---------- errors ----------
 export class ValidationError extends Error {
