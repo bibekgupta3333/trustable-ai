@@ -1,4 +1,6 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { DatabaseError } from "@tursodatabase/serverless";
+import { asAsyncDatabase, openTursoDatabase, type StudyDatabase } from "./async";
 import type Database from "better-sqlite3";
 import { openDb } from "./db";
 import {
@@ -65,8 +67,8 @@ describe("repo", () => {
   let db: Database.Database;
   beforeEach(() => { db = openDb(":memory:"); });
 
-  it("creates and reads a session round trip", () => {
-    const s = createSession(db, assignment, opts);
+  it("creates and reads a session round trip", async () => {
+    const s = (await createSession(db, assignment, opts));
     expect(s.sessionId).toMatch(/^[0-9a-f-]{36}$/);
     expect(s).toMatchObject({
       pid: 7, status: "in_progress", protocolVersion: "legacy-full-v1", conditionOrder: ["C", "D", "B", "A"], setRotation: 1,
@@ -74,26 +76,26 @@ describe("repo", () => {
       cursor: { blockIndex: 1, positionInBlock: 1, phase: "consent" },
     });
     expect(s.blocks).toEqual(assignment.blocks);
-    expect(getSession(db, s.sessionId)).toEqual(s);
-    expect(getSession(db, "nope")).toBeNull();
+    expect((await getSession(db, s.sessionId))).toEqual(s);
+    expect((await getSession(db, "nope"))).toBeNull();
   });
 
-  it("finds the in-progress session by pid", () => {
-    const s = createSession(db, assignment, opts);
-    expect(findInProgressByPid(db, 7)?.sessionId).toBe(s.sessionId);
-    expect(findInProgressByPid(db, 8)).toBeNull();
-    setStatus(db, s.sessionId, "abandoned");
-    expect(findInProgressByPid(db, 7)).toBeNull();
+  it("finds the in-progress session by pid", async () => {
+    const s = (await createSession(db, assignment, opts));
+    expect((await findInProgressByPid(db, 7))?.sessionId).toBe(s.sessionId);
+    expect((await findInProgressByPid(db, 8))).toBeNull();
+    (await setStatus(db, s.sessionId, "abandoned"));
+    expect((await findInProgressByPid(db, 7))).toBeNull();
   });
 
-  it("updates cursor, consent, resume count and status", () => {
-    const { sessionId } = createSession(db, assignment, opts);
-    updateCursor(db, sessionId, { blockIndex: 3, positionInBlock: 4, phase: "trial" });
-    recordConsent(db, sessionId, "2026-01-01T00:00:00.000Z");
-    incrementResume(db, sessionId);
-    incrementResume(db, sessionId);
-    setStatus(db, sessionId, "completed", "2026-01-02T00:00:00.000Z");
-    const s = getSession(db, sessionId)!;
+  it("updates cursor, consent, resume count and status", async () => {
+    const { sessionId } = (await createSession(db, assignment, opts));
+    (await updateCursor(db, sessionId, { blockIndex: 3, positionInBlock: 4, phase: "trial" }));
+    (await recordConsent(db, sessionId, "2026-01-01T00:00:00.000Z"));
+    (await incrementResume(db, sessionId));
+    (await incrementResume(db, sessionId));
+    (await setStatus(db, sessionId, "completed", "2026-01-02T00:00:00.000Z"));
+    const s = (await getSession(db, sessionId))!;
     expect(s.cursor).toEqual({ blockIndex: 3, positionInBlock: 4, phase: "trial" });
     expect(s.consentAt).toBe("2026-01-01T00:00:00.000Z");
     expect(s.resumeCount).toBe(2);
@@ -101,68 +103,68 @@ describe("repo", () => {
     expect(s.completedAt).toBe("2026-01-02T00:00:00.000Z");
   });
 
-  it("inserts a trial and rejects a duplicate with ConflictError", () => {
-    const { sessionId } = createSession(db, assignment, opts);
-    insertTrial(db, sessionId, trial(1));
-    expect(getTrials(db, sessionId)).toEqual([trial(1)]);
-    expect(() => insertTrial(db, sessionId, trial(1))).toThrow(ConflictError);
+  it("inserts a trial and rejects a duplicate with ConflictError", async () => {
+    const { sessionId } = (await createSession(db, assignment, opts));
+    (await insertTrial(db, sessionId, trial(1)));
+    expect((await getTrials(db, sessionId))).toEqual([trial(1)]);
+    (await expect(insertTrial(db, sessionId, trial(1))).rejects.toThrow(ConflictError));
     const noC: Trial = { ...trial(2), explanationOpened: null, factorsExpanded: [], detectedError: null, timeToFirstExpandMs: null };
-    insertTrial(db, sessionId, noC);
-    expect(getTrials(db, sessionId)[1]).toEqual(noC);
+    (await insertTrial(db, sessionId, noC));
+    expect((await getTrials(db, sessionId))[1]).toEqual(noC);
   });
 
-  it("inserts events with INSERT OR IGNORE by seq", () => {
-    const { sessionId } = createSession(db, assignment, opts);
-    expect(insertEvents(db, sessionId, [ev(1), ev(2)])).toBe(2);
-    expect(insertEvents(db, sessionId, [ev(2), ev(3)])).toBe(1);
-    expect(insertEvents(db, sessionId, [])).toBe(0);
-    const rows = allEventRows(db);
+  it("inserts events with INSERT OR IGNORE by seq", async () => {
+    const { sessionId } = (await createSession(db, assignment, opts));
+    expect((await insertEvents(db, sessionId, [ev(1), ev(2)]))).toBe(2);
+    expect((await insertEvents(db, sessionId, [ev(2), ev(3)]))).toBe(1);
+    expect((await insertEvents(db, sessionId, []))).toBe(0);
+    const rows = (await allEventRows(db));
     expect(rows.map((r) => r.seq)).toEqual([1, 2, 3]);
     expect(rows[0]).toMatchObject({ pid: 7, sessionId, type: "factor_expand", factorKey: "source", tMs: 10 });
   });
 
-  it("inserts a block survey, rejects a duplicate, and expands trust columns", () => {
-    const { sessionId } = createSession(db, assignment, opts);
-    insertBlockSurvey(db, sessionId, survey);
-    expect(() => insertBlockSurvey(db, sessionId, survey)).toThrow(ConflictError);
-    const [row] = allSurveyRows(db);
+  it("inserts a block survey, rejects a duplicate, and expands trust columns", async () => {
+    const { sessionId } = (await createSession(db, assignment, opts));
+    (await insertBlockSurvey(db, sessionId, survey));
+    (await expect(insertBlockSurvey(db, sessionId, survey)).rejects.toThrow(ConflictError));
+    const [row] = (await allSurveyRows(db));
     expect(row).toMatchObject({
       pid: 7, sessionId, blockIndex: 1, condition: "C", trust_01: 2, trust_12: 2, trust_01_s: 6, trust_06_s: 2,
       trustMean: 3.67, fairnessMean: 4.5, frustrationTlx: 35, frustrationTlxTouched: true, nWrongDetected: 1,
     });
   });
 
-  it("round trips brief scores and protocol metadata without inventing full questionnaire values", () => {
-    const s = createSession(db, assignment, { ...opts, protocolVersion: "calibrated-brief-v1" });
+  it("round trips brief scores and protocol metadata without inventing full questionnaire values", async () => {
+    const s = (await createSession(db, assignment, { ...opts, protocolVersion: "calibrated-brief-v1" }));
     const brief: BlockSurvey = { ...survey, questionnaireVersion: "brief-v1", briefTrust: 6,
       trustResponses: [], trustMean: null, fairness1: null, fairness2: null, fairnessMean: null };
-    insertBlockSurvey(db, s.sessionId, brief);
-    expect(listSessions(db)[0].protocolVersion).toBe("calibrated-brief-v1");
-    expect(allSurveyRows(db)[0]).toMatchObject({ questionnaireVersion: "brief-v1", briefTrust: 6,
+    (await insertBlockSurvey(db, s.sessionId, brief));
+    expect((await listSessions(db))[0].protocolVersion).toBe("calibrated-brief-v1");
+    expect((await allSurveyRows(db))[0]).toMatchObject({ questionnaireVersion: "brief-v1", briefTrust: 6,
       trust_01: null, trust_12: null, trust_01_s: null, trust_12_s: null,
       trustMean: null, fairness1: null, fairness2: null, fairnessMean: null });
-    const full = allSessionsFull(db)[0] as any;
+    const full = (await allSessionsFull(db))[0] as any;
     expect(full.protocolVersion).toBe("calibrated-brief-v1");
     expect(full.blocks[0].survey).toEqual(brief);
   });
 
-  it("inserts an exit survey once", () => {
-    const { sessionId } = createSession(db, assignment, opts);
-    insertExitSurvey(db, sessionId, exitSurvey);
-    expect(() => insertExitSurvey(db, sessionId, exitSurvey)).toThrow(ConflictError);
-    expect(allExitRows(db)).toEqual([{ ...exitSurvey, pid: 7, sessionId, conditionOrder: "CDBA", setRotation: 1, status: "in_progress", protocolVersion: "legacy-full-v1" }]);
+  it("inserts an exit survey once", async () => {
+    const { sessionId } = (await createSession(db, assignment, opts));
+    (await insertExitSurvey(db, sessionId, exitSurvey));
+    (await expect(insertExitSurvey(db, sessionId, exitSurvey)).rejects.toThrow(ConflictError));
+    expect((await allExitRows(db))).toEqual([{ ...exitSurvey, pid: 7, sessionId, conditionOrder: "CDBA", setRotation: 1, status: "in_progress", protocolVersion: "legacy-full-v1" }]);
   });
 
-  it("export rows join session columns and full sessions nest everything", () => {
-    const { sessionId } = createSession(db, assignment, opts);
-    insertTrial(db, sessionId, trial(1));
-    insertEvents(db, sessionId, [ev(1)]);
-    insertBlockSurvey(db, sessionId, survey);
-    insertExitSurvey(db, sessionId, exitSurvey);
-    const [t] = allTrialRows(db);
+  it("export rows join session columns and full sessions nest everything", async () => {
+    const { sessionId } = (await createSession(db, assignment, opts));
+    (await insertTrial(db, sessionId, trial(1)));
+    (await insertEvents(db, sessionId, [ev(1)]));
+    (await insertBlockSurvey(db, sessionId, survey));
+    (await insertExitSurvey(db, sessionId, exitSurvey));
+    const [t] = (await allTrialRows(db));
     expect(t).toMatchObject({ pid: 7, sessionId, set: "S2", conditionOrder: "CDBA", setRotation: 1, status: "in_progress",
       isAiCorrect: false, factorsExpanded: ["claimVsRecord", "source"] });
-    const [full] = allSessionsFull(db) as any[];
+    const [full] = (await allSessionsFull(db)) as any[];
     expect(full.blocks).toHaveLength(4);
     expect(full.blocks[0].trials).toEqual([trial(1)]);
     expect(full.blocks[0].survey.trustResponses[0]).toEqual({ itemId: "jian-01", raw: 2, scored: 6 });
@@ -171,35 +173,35 @@ describe("repo", () => {
     expect(full.exitSurvey).toEqual(exitSurvey);
   });
 
-  it("deleteSession cascades to every child table", () => {
-    const { sessionId } = createSession(db, assignment, opts);
-    insertTrial(db, sessionId, trial(1));
-    insertEvents(db, sessionId, [ev(1)]);
-    insertBlockSurvey(db, sessionId, survey);
-    insertExitSurvey(db, sessionId, exitSurvey);
-    deleteSession(db, sessionId);
-    expect(getSession(db, sessionId)).toBeNull();
+  it("deleteSession cascades to every child table", async () => {
+    const { sessionId } = (await createSession(db, assignment, opts));
+    (await insertTrial(db, sessionId, trial(1)));
+    (await insertEvents(db, sessionId, [ev(1)]));
+    (await insertBlockSurvey(db, sessionId, survey));
+    (await insertExitSurvey(db, sessionId, exitSurvey));
+    (await deleteSession(db, sessionId));
+    expect((await getSession(db, sessionId))).toBeNull();
     for (const table of ["blocks", "trials", "events", "block_surveys", "exit_surveys"]) {
       const { n } = db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number };
       expect(n, table).toBe(0);
     }
   });
 
-  it("listSessions reports trial and survey counts", () => {
-    const a = createSession(db, assignment, opts);
-    const b = createSession(db, { ...assignment, pid: 8 }, opts);
-    insertTrial(db, a.sessionId, trial(1));
-    insertTrial(db, a.sessionId, trial(2));
-    insertBlockSurvey(db, a.sessionId, survey);
-    const rows = listSessions(db);
+  it("listSessions reports trial and survey counts", async () => {
+    const a = (await createSession(db, assignment, opts));
+    const b = (await createSession(db, { ...assignment, pid: 8 }, opts));
+    (await insertTrial(db, a.sessionId, trial(1)));
+    (await insertTrial(db, a.sessionId, trial(2)));
+    (await insertBlockSurvey(db, a.sessionId, survey));
+    const rows = (await listSessions(db));
     expect(rows).toHaveLength(2);
     const ra = rows.find((r) => r.sessionId === a.sessionId)!;
     const rb = rows.find((r) => r.sessionId === b.sessionId)!;
     expect(ra).toMatchObject({ pid: 7, conditionOrder: "CDBA", setRotation: 1, trialsSaved: 2, surveysSaved: 1, completedAt: null });
     expect(rb).toMatchObject({ pid: 8, trialsSaved: 0, surveysSaved: 0, status: "in_progress" });
     expect(ra.lastActivityAt).toBe(a.startedAt);
-    touchActivity(db, a.sessionId, "2026-02-02T00:00:00.000Z");
-    expect(listSessions(db).find((r) => r.sessionId === a.sessionId)!.lastActivityAt).toBe("2026-02-02T00:00:00.000Z");
+    (await touchActivity(db, a.sessionId, "2026-02-02T00:00:00.000Z"));
+    expect((await listSessions(db)).find((r) => r.sessionId === a.sessionId)!.lastActivityAt).toBe("2026-02-02T00:00:00.000Z");
   });
 });
 
@@ -212,7 +214,7 @@ describe("participation codes and pid allocation", () => {
     opts: { consequenceBanner: false, anxiety: false, postBankHash: "h", appVersion: "v" },
   });
 
-  it("hash is deterministic hex HMAC-SHA256 and depends on salt and code", () => {
+  it("hash is deterministic hex HMAC-SHA256 and depends on salt and code", async () => {
     const h = hashParticipantCode("salt", "abc");
     expect(h).toMatch(/^[0-9a-f]{64}$/);
     expect(hashParticipantCode("salt", "abc")).toBe(h);
@@ -220,52 +222,52 @@ describe("participation codes and pid allocation", () => {
     expect(hashParticipantCode("salt", "abd")).not.toBe(h);
   });
 
-  it("participantSalt prefers env, else generates once into meta", () => {
-    expect(participantSalt(db, "from-env")).toBe("from-env");
-    const s1 = participantSalt(db);
+  it("participantSalt prefers env, else generates once into meta", async () => {
+    expect((await participantSalt(db, "from-env"))).toBe("from-env");
+    const s1 = (await participantSalt(db));
     expect(s1).toMatch(/^[0-9a-f]{64}$/);
-    expect(participantSalt(db)).toBe(s1);
+    expect((await participantSalt(db))).toBe(s1);
   });
 
-  it("new, resumed, already_participated", () => {
-    const r1 = startOrResumeSession(db, startArgs("a"));
+  it("new, resumed, already_participated", async () => {
+    const r1 = (await startOrResumeSession(db, startArgs("a")));
     expect(r1.kind).toBe("new");
-    const r2 = startOrResumeSession(db, startArgs("a"));
+    const r2 = (await startOrResumeSession(db, startArgs("a")));
     expect(r2.kind).toBe("resumed");
     if (r1.kind !== "new" || r2.kind !== "resumed") throw new Error("unreachable");
     expect(r2.session.sessionId).toBe(r1.session.sessionId);
     expect(r2.session.resumeCount).toBe(1);
-    setStatus(db, r1.session.sessionId, "completed");
-    expect(startOrResumeSession(db, startArgs("a")).kind).toBe("already_participated");
+    (await setStatus(db, r1.session.sessionId, "completed"));
+    expect((await startOrResumeSession(db, startArgs("a"))).kind).toBe("already_participated");
   });
 
-  it("allocates lowest free pid, reuses abandoned, sweeps stale, skips >= 900", () => {
-    const pid = (code: string, now?: Date) => {
-      const r = startOrResumeSession(db, startArgs(code, now));
+  it("allocates lowest free pid, reuses abandoned, sweeps stale, skips >= 900", async () => {
+    const pid = async (code: string, now?: Date) => {
+      const r = (await startOrResumeSession(db, startArgs(code, now)));
       if (r.kind !== "new") throw new Error(r.kind);
       return r.session;
     };
-    const [a, b, c] = [pid("a"), pid("b"), pid("c")];
+    const [a, b, c] = [(await pid("a")), (await pid("b")), (await pid("c"))];
     expect([a.pid, b.pid, c.pid]).toEqual([1, 2, 3]);
-    setStatus(db, a.sessionId, "abandoned");
-    const d = pid("d");
+    (await setStatus(db, a.sessionId, "abandoned"));
+    const d = (await pid("d"));
     expect(d.pid).toBe(1);
     // 3 hours from now b is stale (idle > 120 min); c and d were active a minute before
     const later = new Date(Date.now() + 3 * 3600_000);
-    for (const x of [c, d]) touchActivity(db, x.sessionId, new Date(later.getTime() - 60_000).toISOString());
-    const e = pid("e", later);
+    for (const x of [c, d]) (await touchActivity(db, x.sessionId, new Date(later.getTime() - 60_000).toISOString()));
+    const e = (await pid("e", later));
     expect(e.pid).toBe(2);
-    expect(getSession(db, b.sessionId)!.status).toBe("abandoned");
-    expect(getSession(db, c.sessionId)!.status).toBe("in_progress");
-    touchActivity(db, e.sessionId, later.toISOString());
-    expect(abandonStaleSessions(db, 120, later)).toBe(0);
-    expect(abandonStaleSessions(db, 120, new Date(later.getTime() + 3 * 3600_000))).toBe(3); // c, d, e
-    createSession(db, assign(900), opts);
-    createSession(db, assign(905), opts);
-    expect(nextFreePid(db)).toBe(1);
+    expect((await getSession(db, b.sessionId))!.status).toBe("abandoned");
+    expect((await getSession(db, c.sessionId))!.status).toBe("in_progress");
+    (await touchActivity(db, e.sessionId, later.toISOString()));
+    expect((await abandonStaleSessions(db, 120, later))).toBe(0);
+    expect((await abandonStaleSessions(db, 120, new Date(later.getTime() + 3 * 3600_000)))).toBe(3); // c, d, e
+    (await createSession(db, assign(900), opts));
+    (await createSession(db, assign(905), opts));
+    expect((await nextFreePid(db))).toBe(1);
   });
 
-  it("is safe across two connections to the same file (BEGIN IMMEDIATE)", () => {
+  it("is safe across two connections to the same file (BEGIN IMMEDIATE)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "xai-repo-"));
     try {
       const path = join(dir, "study.db");
@@ -273,10 +275,10 @@ describe("participation codes and pid allocation", () => {
       const c2 = openDb(path);
       const pids: number[] = [];
       for (let i = 0; i < 30; i++) {
-        const r = startOrResumeSession(i % 2 ? c1 : c2, startArgs(`code-${i}`));
+        const r = (await startOrResumeSession(i % 2 ? c1 : c2, startArgs(`code-${i}`)));
         if (r.kind !== "new") throw new Error(r.kind);
         pids.push(r.session.pid);
-        if (i % 7 === 3) setStatus(i % 2 ? c2 : c1, r.session.sessionId, "abandoned");
+        if (i % 7 === 3) (await setStatus(i % 2 ? c2 : c1, r.session.sessionId, "abandoned"));
       }
       const live = (c1.prepare("SELECT pid FROM sessions WHERE status = 'in_progress' ORDER BY pid").all() as { pid: number }[]).map((r) => r.pid);
       expect(new Set(live).size).toBe(live.length);
@@ -290,7 +292,7 @@ describe("participation codes and pid allocation", () => {
 });
 
 describe("migration from the v1 schema", () => {
-  it("adds participant_hash, last_activity_at and the unique index to an old DB, keeping rows", () => {
+  it("adds participant_hash, last_activity_at and the unique index to an old DB, keeping rows", async () => {
     const dir = mkdtempSync(join(tmpdir(), "xai-mig-"));
     try {
       const path = join(dir, "old.db");
@@ -319,12 +321,12 @@ describe("migration from the v1 schema", () => {
       expect((db.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as { value: string }).value).toBe("5");
       const row = db.prepare("SELECT participant_hash, last_activity_at FROM sessions WHERE session_id = 'old-1'").get();
       expect(row).toEqual({ participant_hash: null, last_activity_at: "2026-01-01T00:00:00.000Z" });
-      expect(listSessions(db)[0]).toMatchObject({ sessionId: "old-1", lastActivityAt: "2026-01-01T00:00:00.000Z" });
+      expect((await listSessions(db))[0]).toMatchObject({ sessionId: "old-1", lastActivityAt: "2026-01-01T00:00:00.000Z" });
       // the old pid-1 session went stale long ago: a self-start abandons it and reuses pid 1
-      const r = startOrResumeSession(db, {
+      const r = (await startOrResumeSession(db, {
         participantHash: hashParticipantCode("s", "abc"), staleMinutes: 120, assign: (pid) => ({ ...assignment, pid }),
         opts: { consequenceBanner: false, anxiety: false, postBankHash: "h", appVersion: "v" },
-      });
+      }));
       expect(r.kind === "new" && r.session.pid).toBe(1);
       // unique index enforced
       expect(() => db.prepare("UPDATE sessions SET participant_hash = ? WHERE session_id = 'old-1'")
@@ -342,7 +344,7 @@ describe("migration from the v1 schema", () => {
 
 
 describe("schema 5 migration retention", () => {
-  it.each([2, 3, 4])("preserves schema %i full/brief scores, plans, responses and identities across migration and reopen", (version) => {
+  it.each([2, 3, 4])("preserves schema %i full/brief scores, plans, responses and identities across migration and reopen", async (version) => {
     const dir = mkdtempSync(join(tmpdir(), "xai-v3-retention-"));
     const path = join(dir, "old-v2.db");
     try {
@@ -367,8 +369,8 @@ describe("schema 5 migration retention", () => {
         old.prepare("INSERT INTO blocks (session_id, block_index, condition, set_id, post_order) VALUES ('saved', ?, ?, ?, ?)")
           .run(block.blockIndex, block.condition, block.set, JSON.stringify(block.postOrder));
       }
-      insertTrial(old, "saved", trial());
-      insertEvents(old, "saved", [ev(4), ev(5)]);
+      (await insertTrial(old, "saved", trial()));
+      (await insertEvents(old, "saved", [ev(4), ev(5)]));
       const raw = JSON.stringify(survey.trustResponses.map((r) => r.raw));
       const scored = JSON.stringify(survey.trustResponses.map((r) => r.scored));
       old.prepare(`INSERT INTO block_surveys (session_id, block_index, condition, trust_raw, trust_scored,
@@ -376,13 +378,13 @@ describe("schema 5 migration retention", () => {
         n_wrong_detected, anxiety, submitted_at) VALUES ('saved', 1, 'C', ?, ?, ?, 4, 5, 4.5, 3, 35, 1, 1, NULL, ?)`)
         .run(raw, scored, survey.trustMean, survey.submittedAt);
       if (version >= 3) {
-        const briefSession = createSession(old, { ...assignment, pid: 8 }, { ...opts, protocolVersion: "calibrated-brief-v1" });
-        insertBlockSurvey(old, briefSession.sessionId, { ...survey, questionnaireVersion: "brief-v1", briefTrust: 6,
-          trustResponses: [], trustMean: null, fairness1: null, fairness2: null, fairnessMean: null });
+        const briefSession = (await createSession(old, { ...assignment, pid: 8 }, { ...opts, protocolVersion: "calibrated-brief-v1" }));
+        (await insertBlockSurvey(old, briefSession.sessionId, { ...survey, questionnaireVersion: "brief-v1", briefTrust: 6,
+          trustResponses: [], trustMean: null, fairness1: null, fairness2: null, fairnessMean: null }));
       }
       if (version === 4) {
-        const fullSession = createSession(old, { ...assignment, pid: 11 }, { ...opts, protocolVersion: "calibrated-full-v1" });
-        insertBlockSurvey(old, fullSession.sessionId, survey);
+        const fullSession = (await createSession(old, { ...assignment, pid: 11 }, { ...opts, protocolVersion: "calibrated-full-v1" }));
+        (await insertBlockSurvey(old, fullSession.sessionId, survey));
       }
       const saved = Object.fromEntries(["sessions", "blocks", "trials", "events", "block_surveys"].map((table) =>
         [table, old.prepare(`SELECT * FROM ${table}`).all()]));
@@ -395,24 +397,24 @@ describe("schema 5 migration retention", () => {
           expect(actual).toHaveLength(rows.length);
           rows.forEach((row, i) => expect(actual[i]).toMatchObject(row as object));
         }
-        expect(getSession(migrated, "saved")).toMatchObject({
+        expect((await getSession(migrated, "saved"))).toMatchObject({
           protocolVersion: "legacy-full-v1", nextEventSeq: 6, blocks: assignment.blocks,
           cursor: { phase: "block_survey" },
         });
-        const full = (allSessionsFull(migrated) as any[]).find((s) => s.sessionId === "saved");
+        const full = ((await allSessionsFull(migrated)) as any[]).find((s) => s.sessionId === "saved");
         expect(full.blocks[0].survey).toEqual({ ...survey, questionnaireVersion: "full-v1", briefTrust: null });
         expect(migrated.prepare("SELECT value FROM meta WHERE key='participant_salt'").get()).toEqual({ value: "keep-salt" });
         expect(migrated.prepare("SELECT value FROM meta WHERE key='schema_version'").get()).toEqual({ value: "5" });
         expect(migrated.pragma("foreign_key_check")).toEqual([]);
         if (pass === 1) {
           expect(migrated.pragma("foreign_keys", { simple: true })).toBe(1);
-          const restored = createSession(migrated, { ...assignment, pid: 9 }, { ...opts, protocolVersion: "calibrated-media-full-v1" });
-          insertBlockSurvey(migrated, restored.sessionId, survey);
-          expect(getSession(migrated, restored.sessionId)?.protocolVersion).toBe("calibrated-media-full-v1");
-          const current = createSession(migrated, { ...assignment, pid: 10 }, { ...opts, protocolVersion: "calibrated-brief-v1" });
+          const restored = (await createSession(migrated, { ...assignment, pid: 9 }, { ...opts, protocolVersion: "calibrated-media-full-v1" }));
+          (await insertBlockSurvey(migrated, restored.sessionId, survey));
+          expect((await getSession(migrated, restored.sessionId))?.protocolVersion).toBe("calibrated-media-full-v1");
+          const current = (await createSession(migrated, { ...assignment, pid: 10 }, { ...opts, protocolVersion: "calibrated-brief-v1" }));
           const brief: BlockSurvey = { ...survey, questionnaireVersion: "brief-v1", briefTrust: 7,
             trustResponses: [], trustMean: null, fairness1: null, fairness2: null, fairnessMean: null };
-          insertBlockSurvey(migrated, current.sessionId, brief);
+          (await insertBlockSurvey(migrated, current.sessionId, brief));
           expect(() => migrated.prepare("UPDATE block_surveys SET brief_trust=8 WHERE session_id=?").run(current.sessionId)).toThrow(/CHECK/);
           expect(() => migrated.prepare("UPDATE block_surveys SET brief_trust=0 WHERE session_id=?").run(current.sessionId)).toThrow(/CHECK/);
         }
@@ -421,5 +423,471 @@ describe("schema 5 migration retention", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+describe("async local database adapter", () => {
+  let raw: Database.Database;
+  let db: StudyDatabase;
+  beforeEach(() => {
+    raw = openDb(":memory:");
+    db = asAsyncDatabase(raw);
+  });
+  afterEach(async () => { await db.close(); });
+
+  it("normalizes a handle once, preserves async handles, and supports statements and pragma", async () => {
+    expect(asAsyncDatabase(raw)).toBe(db);
+    expect(asAsyncDatabase(db)).toBe(db);
+    await db.exec("CREATE TABLE adapter_test (n INTEGER); INSERT INTO adapter_test VALUES (1), (2);");
+    expect(await db.prepare("SELECT n FROM adapter_test ORDER BY n").all()).toEqual([{ n: 1 }, { n: 2 }]);
+    expect(await db.prepare("SELECT n FROM adapter_test WHERE n = ?").get(99)).toBeUndefined();
+    expect(await db.prepare("UPDATE adapter_test SET n = n + 2").run()).toEqual({ changes: 2 });
+    expect(await db.pragma("foreign_keys", { simple: true })).toBe(1);
+  });
+
+  it("queues outside queries and transactions until rollback, without leaking uncommitted data", async () => {
+    await db.exec("CREATE TABLE adapter_test (n INTEGER)");
+    const entered = deferred();
+    const release = deferred();
+    const first = db.transaction(async () => {
+      await db.prepare("INSERT INTO adapter_test VALUES (?)").run(1);
+      entered.resolve();
+      await release.promise;
+      throw new Error("abort first");
+    }).immediate();
+    const rejected = expect(first).rejects.toThrow("abort first");
+    await entered.promise;
+    let readFinished = false;
+    const read = db.prepare("SELECT * FROM adapter_test").all().then((rows) => { readFinished = true; return rows; });
+    const second = db.transaction(async (n: number) => {
+      await db.prepare("INSERT INTO adapter_test VALUES (?)").run(n);
+      return n;
+    })(2);
+    await Promise.resolve();
+    expect(readFinished).toBe(false);
+    release.resolve();
+    await rejected;
+    expect(await read).toEqual([]);
+    expect(await second).toBe(2);
+    expect(await db.prepare("SELECT * FROM adapter_test").all()).toEqual([{ n: 2 }]);
+  });
+
+  it("rolls back a failed nested savepoint while retaining the outer transaction", async () => {
+    await db.exec("CREATE TABLE adapter_test (n INTEGER)");
+    await db.transaction(async () => {
+      await db.prepare("INSERT INTO adapter_test VALUES (1)").run();
+      await expect(db.transaction(async () => {
+        await db.prepare("INSERT INTO adapter_test VALUES (2)").run();
+        throw new Error("nested failure");
+      }).immediate()).rejects.toThrow("nested failure");
+      await db.transaction(async () => {
+        await db.prepare("INSERT INTO adapter_test VALUES (3)").run();
+      })();
+      await expect(db.close()).rejects.toThrow("inside a transaction");
+    }).immediate();
+    expect(await db.prepare("SELECT n FROM adapter_test ORDER BY n").all()).toEqual([{ n: 1 }, { n: 3 }]);
+  });
+
+  it("serializes sibling savepoints so one rollback cannot remove another sibling's write", async () => {
+    await db.exec("CREATE TABLE adapter_test (n INTEGER)");
+    await db.transaction(async () => {
+      const result = await Promise.allSettled([
+        db.transaction(async () => {
+          await db.prepare("INSERT INTO adapter_test VALUES (1)").run();
+          await Promise.resolve();
+          throw new Error("first sibling fails");
+        })(),
+        db.transaction(async () => { await db.prepare("INSERT INTO adapter_test VALUES (2)").run(); })(),
+      ]);
+      expect(result.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
+    })();
+    expect(await db.prepare("SELECT * FROM adapter_test").all()).toEqual([{ n: 2 }]);
+  });
+
+  it("rolls back all writes when the outer callback fails after a successful nested transaction", async () => {
+    await db.exec("CREATE TABLE adapter_test (n INTEGER)");
+    await expect(db.transaction(async () => {
+      await db.transaction(async () => { await db.prepare("INSERT INTO adapter_test VALUES (1)").run(); })();
+      throw new Error("outer failure");
+    })()).rejects.toThrow("outer failure");
+    expect(await db.prepare("SELECT * FROM adapter_test").all()).toEqual([]);
+  });
+
+  it("concurrent starts on a raw handle allocate unique pids and resume one code exactly once", async () => {
+    const args = (code: string) => ({
+      participantHash: hashParticipantCode("test-salt", code), staleMinutes: 120,
+      assign: (pid: number) => ({ ...assignment, pid }), opts,
+    });
+    const same = await Promise.all(Array.from({ length: 8 }, () => startOrResumeSession(raw, args("same"))));
+    expect(same.filter((r) => r.kind === "new")).toHaveLength(1);
+    expect(same.filter((r) => r.kind === "resumed")).toHaveLength(7);
+    const different = await Promise.all(Array.from({ length: 12 }, (_, i) => startOrResumeSession(raw, args(`different-${i}`))));
+    const pids = different.map((r) => r.kind === "new" ? r.session.pid : null);
+    expect(pids).not.toContain(null);
+    expect(new Set(pids).size).toBe(12);
+    expect((await listSessions(raw))).toHaveLength(13);
+  });
+
+  it("rolls back session creation if any assigned block violates its constraints", async () => {
+    const invalid = { ...assignment, blocks: [assignment.blocks[0], assignment.blocks[0]] } as unknown as Assignment;
+    await expect(createSession(raw, invalid, opts)).rejects.toBeInstanceOf(ConflictError);
+    expect(await listSessions(raw)).toEqual([]);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM blocks").get()).toEqual({ n: 0 });
+  });
+});
+
+
+/** Exercise the installed SDK's HTTP/stream handling, not a replacement SDK. */
+function mockTursoHttp() {
+  const directory = mkdtempSync(join(tmpdir(), "xai-turso-"));
+  const path = join(directory, "remote.db");
+  const streams = new Map<string, { id: number; sqlite: Database.Database }>();
+  const created: { id: number; initialForeignKeys: number }[] = [];
+  const log: { stream: number; sql: string }[] = [];
+  let serial = 0;
+  let token = 0;
+  const value = (v: any): any => v === null ? { type: "null" }
+    : typeof v === "bigint" ? { type: "integer", value: String(v) }
+    : typeof v === "number" ? { type: "float", value: v }
+    : { type: "text", value: v };
+  const decode = (v: any): any => v.type === "null" ? null
+    : v.type === "integer" ? BigInt(v.value) : v.value;
+  const error = (e: any) => ({ message: e.message, code: e.code });
+  const fetch = vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(init!.body as string);
+    let stream = streams.get(body.baton);
+    if (body.baton && !stream) return new Response("Expired stream", { status: 404 });
+    if (stream) streams.delete(body.baton); // A baton is consumed once, just as on the server.
+    else {
+      const sqlite = new BetterSqlite(path);
+      sqlite.pragma("foreign_keys = OFF"); // Every fresh stream starts independently.
+      stream = { id: ++serial, sqlite };
+      created.push({ id: stream.id, initialForeignKeys: sqlite.pragma("foreign_keys", { simple: true }) as number });
+    }
+    const baton = `stream-${stream.id}-${++token}`;
+    streams.set(baton, stream);
+    const sqlite = stream.sqlite;
+    if (body.requests) {
+      let closing = false;
+      const results = body.requests.map((request: any) => {
+        try {
+          if (request.type === "sequence") {
+            log.push({ stream: stream!.id, sql: request.sql });
+            sqlite.exec(request.sql);
+          } else if (request.type === "close") {
+            closing = true;
+          } else if (request.type === "get_autocommit") {
+            return { type: "ok", response: { type: "get_autocommit", is_autocommit: !sqlite.inTransaction } };
+          } else throw new Error(`Unexpected request ${request.type}`);
+          return { type: "ok", response: { type: request.type } };
+        } catch (e) { return { type: "error", error: error(e) }; }
+      });
+      if (closing) { streams.delete(baton); sqlite.close(); }
+      return Response.json({ baton: closing ? null : baton, base_url: null, results });
+    }
+    const entries: any[] = [{ baton, base_url: null }];
+    for (const [step, item] of body.batch.steps.entries()) {
+      if (item.condition?.type === "is_autocommit" && sqlite.inTransaction) continue;
+      const sql = item.stmt.sql;
+      if (!item.condition) log.push({ stream: stream.id, sql });
+      try {
+        const statement = sqlite.prepare(sql).safeIntegers(true);
+        const params = (item.stmt.args ?? []).map(decode);
+        const cols = statement.reader ? statement.columns().map((c) => ({ name: c.name, decltype: c.type ?? "" })) : [];
+        entries.push({ type: "step_begin", step, cols });
+        let changes = 0;
+        if (statement.reader) {
+          const rows = statement.raw().all(...params) as any[][];
+          if (item.stmt.want_rows) for (const row of rows) entries.push({ type: "row", row: row.map(value) });
+        } else changes = statement.run(...params).changes;
+        entries.push({ type: "step_end", step, affected_row_count: changes });
+      } catch (e) { entries.push({ type: "step_error", step, error: error(e) }); }
+    }
+    return new Response(entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  });
+  vi.stubGlobal("fetch", fetch);
+  return {
+    fetch, log, created, streams,
+    cleanup: () => {
+      for (const { sqlite } of streams.values()) sqlite.close();
+      streams.clear();
+      vi.unstubAllGlobals();
+      rmSync(directory, { recursive: true, force: true });
+    },
+  };
+}
+
+describe("Turso adapter with the real serverless SDK and SQLite-backed HTTP streams", () => {
+  const url = "turso://study.example.invalid";
+  let http: ReturnType<typeof mockTursoHttp>;
+  let db: StudyDatabase;
+  beforeEach(() => { http = mockTursoHttp(); db = openTursoDatabase(url, "test-token"); });
+  afterEach(async () => { try { await db.close(); } finally { http.cleanup(); } });
+
+  it("is lazy, uses HTTPS/authentication, and initializes foreign keys before BEGIN on the same stream", async () => {
+    expect(http.fetch).not.toHaveBeenCalled();
+    await db.transaction(async () => {
+      expect(await db.pragma("foreign_keys", { simple: true })).toBe(1);
+      expect(await db.prepare("SELECT ? AS n").get(12)).toEqual({ n: 12 });
+    }).immediate();
+    expect(http.created).toEqual([{ id: 1, initialForeignKeys: 0 }]);
+    expect(http.log.slice(0, 2).map((l) => l.sql)).toEqual([
+      "PRAGMA foreign_keys = ON", "BEGIN IMMEDIATE",
+    ]);
+    expect(new Set(http.log.map((l) => l.stream)).size).toBe(1);
+    for (const [endpoint, options] of http.fetch.mock.calls) {
+      expect(String(endpoint)).toMatch(/^https:\/\/study\.example\.invalid\/v3\//);
+      expect((options!.headers as Record<string, string>).Authorization).toBe("Bearer test-token");
+    }
+  });
+
+  it("executes canonical multi-statement SQL, triggers and quoted semicolons without splitting", async () => {
+    const schema = readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8");
+    await db.exec(schema);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 0 });
+    await db.exec(`CREATE TABLE source (n INTEGER); CREATE TABLE audit (text TEXT);
+      CREATE TRIGGER track AFTER INSERT ON source BEGIN
+        INSERT INTO audit VALUES ('first;message');
+        INSERT INTO audit VALUES ('second;message');
+      END; INSERT INTO source VALUES (1);`);
+    expect(await db.prepare("SELECT * FROM audit").all()).toEqual([{ text: "first;message" }, { text: "second;message" }]);
+    expect(http.log.some((l) => l.sql === schema)).toBe(true);
+  });
+
+  it("normalizes numbers, absent rows, binds and affected-row counts", async () => {
+    await db.exec("CREATE TABLE example (n INTEGER, text TEXT); INSERT INTO example VALUES (1, 'literal?');");
+    expect(await db.prepare("SELECT n, text, '?' AS literal FROM example WHERE n = ?").get(1)).toEqual({ n: 1, text: "literal?", literal: "?" });
+    expect(await db.prepare("SELECT * FROM example WHERE n = ?").get(9)).toBeUndefined();
+    expect(await db.prepare("UPDATE example SET n = ? WHERE n = ?").run(2, 1)).toEqual({ changes: 1 });
+    expect(await db.prepare("UPDATE example SET n = ? WHERE n = ?").run(3, 9)).toEqual({ changes: 0 });
+    expect(await db.prepare("SELECT 1.5 AS real, NULL AS empty").get()).toEqual({ real: 1.5, empty: null });
+    await expect(db.prepare("SELECT 9007199254740993 AS n").get()).rejects.toThrow("safe range");
+  });
+
+  it("pins nested savepoints and preserves outer writes after a caught inner rollback", async () => {
+    await db.exec("CREATE TABLE example (n INTEGER)");
+    await db.transaction(async () => {
+      await db.prepare("INSERT INTO example VALUES (?)").run(1);
+      await expect(db.transaction(async () => {
+        await db.prepare("INSERT INTO example VALUES (?)").run(2);
+        throw new Error("nested failure");
+      }).immediate()).rejects.toThrow("nested failure");
+      await db.transaction(async () => { await db.prepare("INSERT INTO example VALUES (?)").run(3); })();
+      await expect(db.close()).rejects.toThrow("inside a transaction");
+    }).immediate();
+    expect(await db.prepare("SELECT * FROM example ORDER BY n").all()).toEqual([{ n: 1 }, { n: 3 }]);
+    expect(http.log.map((l) => l.sql)).toContain("ROLLBACK TO SAVEPOINT study_sp_1");
+    expect(http.created).toHaveLength(1);
+  });
+
+  it("queues other requests across a failing transaction and rolls back all nested writes", async () => {
+    await db.exec("CREATE TABLE example (n INTEGER)");
+    const entered = deferred();
+    const release = deferred();
+    const transaction = db.transaction(async () => {
+      await db.transaction(async () => { await db.prepare("INSERT INTO example VALUES (1)").run(); })();
+      entered.resolve();
+      await release.promise;
+      throw new Error("outer failure");
+    }).immediate();
+    const failure = expect(transaction).rejects.toThrow("outer failure");
+    await entered.promise;
+    let finished = false;
+    const read = db.prepare("SELECT * FROM example").all().then((rows) => { finished = true; return rows; });
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    release.resolve();
+    await failure;
+    expect(await read).toEqual([]);
+    // The failed stream is closed; a fresh stream gets FK setup before the next query.
+    expect(http.created).toHaveLength(2);
+    expect(http.log.filter((l) => l.stream === 2)[0].sql).toBe("PRAGMA foreign_keys = ON");
+  });
+
+  it("serializes sibling savepoints without mixing their rollbacks", async () => {
+    await db.exec("CREATE TABLE example (n INTEGER)");
+    await db.transaction(async () => {
+      const result = await Promise.allSettled([
+        db.transaction(async () => {
+          await db.prepare("INSERT INTO example VALUES (1)").run();
+          throw new Error("first fails");
+        })(),
+        db.transaction(async () => { await db.prepare("INSERT INTO example VALUES (2)").run(); })(),
+      ]);
+      expect(result.map((r) => r.status)).toEqual(["rejected", "fulfilled"]);
+    })();
+    expect(await db.prepare("SELECT * FROM example").all()).toEqual([{ n: 2 }]);
+  });
+
+  it("round trips repository data, deduplicates events, maps duplicates, and cascades deletion", async () => {
+    await db.exec(readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8"));
+    const s = await createSession(db, assignment, { ...opts, protocolVersion: "calibrated-full-v1" });
+    await insertTrial(db, s.sessionId, trial());
+    await insertBlockSurvey(db, s.sessionId, survey);
+    await insertExitSurvey(db, s.sessionId, exitSurvey);
+    expect(await insertEvents(db, s.sessionId, [ev(1), ev(2)])).toBe(2);
+    expect(await insertEvents(db, s.sessionId, [ev(2), ev(3)])).toBe(1);
+    expect(await getSession(db, s.sessionId)).toMatchObject({ protocolVersion: "calibrated-full-v1", nextEventSeq: 4, blocks: assignment.blocks });
+    expect(await allSessionsFull(db)).toHaveLength(1);
+    await expect(insertTrial(db, s.sessionId, trial())).rejects.toBeInstanceOf(ConflictError);
+    await expect(insertBlockSurvey(db, s.sessionId, survey)).rejects.toBeInstanceOf(ConflictError);
+    await expect(insertExitSurvey(db, s.sessionId, exitSurvey)).rejects.toBeInstanceOf(ConflictError);
+    // Errors reset the stream; FK must be enabled on this fresh stream before DELETE.
+    await db.transaction(async () => { await deleteSession(db, s.sessionId); }).immediate();
+    for (const table of ["blocks", "trials", "events", "block_surveys", "exit_surveys"]) {
+      expect(await db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get()).toEqual({ n: 0 });
+    }
+    for (const created of http.created) {
+      expect(created.initialForeignKeys).toBe(0);
+      expect(http.log.find((l) => l.stream === created.id)?.sql).toBe("PRAGMA foreign_keys = ON");
+    }
+  });
+
+  it("uploads 5000 events in 100 HTTP inserts, deduplicates retries, and counts only a new tail", async () => {
+    await db.exec(readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8"));
+    const { sessionId } = await createSession(db, assignment, opts);
+    const events = Array.from({ length: 5000 }, (_, i) => ev(i + 1));
+    const eventRequests = (since: number) => http.fetch.mock.calls.slice(since).flatMap(([, init]) => {
+      const request = JSON.parse(init!.body as string);
+      return (request.batch?.steps ?? []).filter((step: any) =>
+        /^\s*INSERT OR IGNORE INTO events\b/i.test(step.stmt.sql));
+    });
+
+    let since = http.fetch.mock.calls.length;
+    expect(await insertEvents(db, sessionId, events)).toBe(5000);
+    expect(eventRequests(since)).toHaveLength(100);
+    expect(eventRequests(since).every((step: any) => step.stmt.args.length === 550)).toBe(true);
+    // Includes BEGIN and COMMIT; excludes setup and later verification queries.
+    expect(http.fetch.mock.calls.length - since).toBe(102);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM events WHERE session_id = ?").get(sessionId)).toEqual({ n: 5000 });
+
+    since = http.fetch.mock.calls.length;
+    expect(await insertEvents(db, sessionId, events)).toBe(0);
+    expect(eventRequests(since)).toHaveLength(100);
+    expect(http.fetch.mock.calls.length - since).toBe(102);
+
+    // First chunk is all duplicates; the second mixes 10 duplicates and 25 new rows.
+    const tail = Array.from({ length: 85 }, (_, i) => ev(4941 + i));
+    since = http.fetch.mock.calls.length;
+    expect(await insertEvents(db, sessionId, tail)).toBe(25);
+    expect(eventRequests(since).map((step: any) => step.stmt.args.length)).toEqual([550, 385]);
+    expect(http.fetch.mock.calls.length - since).toBe(4);
+    expect(await db.prepare("SELECT COUNT(*) AS n, MIN(seq) AS first, MAX(seq) AS last FROM events WHERE session_id = ?")
+      .get(sessionId)).toEqual({ n: 5025, first: 1, last: 5025 });
+    expect(await db.prepare("SELECT seq, type, factor_key FROM events WHERE session_id = ? AND seq = ?")
+      .get(sessionId, 5025)).toEqual({ seq: 5025, type: "factor_expand", factor_key: "source" });
+  });
+
+  it("rolls back the first event chunk when the second chunk fails, preserves prior rows, and permits retry", async () => {
+    await db.exec(readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8"));
+    const { sessionId } = await createSession(db, assignment, opts);
+    await insertEvents(db, sessionId, [ev(9000)]);
+    await db.exec(`CREATE TRIGGER reject_second_event_chunk BEFORE INSERT ON events
+      WHEN NEW.seq = 51 BEGIN SELECT RAISE(ABORT, 'second chunk failed'); END;`);
+    const events = Array.from({ length: 125 }, (_, i) => ev(i + 1));
+    const start = http.log.length;
+    await expect(insertEvents(db, sessionId, events)).rejects.toMatchObject({
+      name: "DatabaseError", message: "second chunk failed", code: "SQLITE_CONSTRAINT_TRIGGER",
+    });
+    const statements = http.log.slice(start).map((l) => l.sql);
+    expect(statements.filter((sql) => /^\s*INSERT OR IGNORE INTO events\b/i.test(sql))).toHaveLength(2);
+    expect(statements).toContain("ROLLBACK");
+    expect(statements).not.toContain("COMMIT");
+    expect(await db.prepare("SELECT seq FROM events WHERE session_id = ? ORDER BY seq").all(sessionId))
+      .toEqual([{ seq: 9000 }]);
+    await db.exec("DROP TRIGGER reject_second_event_chunk");
+    expect(await insertEvents(db, sessionId, events)).toBe(125);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM events WHERE session_id = ?").get(sessionId))
+      .toEqual({ n: 126 });
+  });
+
+  it("retains SDK FK and CHECK violations instead of converting them to duplicate conflicts", async () => {
+    await db.exec(readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8"));
+    await expect(insertExitSurvey(db, "unknown-session", exitSurvey)).rejects.toMatchObject({ name: "DatabaseError", code: "SQLITE_CONSTRAINT_FOREIGNKEY" });
+    await expect(insertExitSurvey(db, "unknown-session", exitSurvey)).rejects.not.toBeInstanceOf(ConflictError);
+    const s = await createSession(db, assignment, opts);
+    const bad = { ...survey, tension: 8 } as unknown as BlockSurvey;
+    await expect(insertBlockSurvey(db, s.sessionId, bad)).rejects.toMatchObject({ name: "DatabaseError", code: "SQLITE_CONSTRAINT_CHECK" });
+    await expect(insertBlockSurvey(db, s.sessionId, bad)).rejects.toBeInstanceOf(DatabaseError);
+    await expect(insertBlockSurvey(db, s.sessionId, bad)).rejects.not.toBeInstanceOf(ConflictError);
+  });
+
+  it("concurrent starts retain atomic pid allocation and code resume behavior", async () => {
+    await db.exec(readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8"));
+    const args = (code: string) => ({
+      participantHash: hashParticipantCode("test-salt", code), staleMinutes: 120,
+      assign: (pid: number) => ({ ...assignment, pid }), opts,
+    });
+    const same = await Promise.all(Array.from({ length: 4 }, () => startOrResumeSession(db, args("same"))));
+    expect(same.filter((r) => r.kind === "new")).toHaveLength(1);
+    expect(same.filter((r) => r.kind === "resumed")).toHaveLength(3);
+    const separate = await Promise.all(Array.from({ length: 4 }, (_, i) => startOrResumeSession(db, args(`code-${i}`))));
+    expect(separate.map((r) => r.kind === "new" ? r.session.pid : null)).toEqual([2, 3, 4, 5]);
+  });
+
+  it("does not replay failed HTTP writes, and retries initialization on a fresh stream", async () => {
+    http.fetch.mockRejectedValueOnce(new Error("network unavailable"));
+    await expect(db.prepare("SELECT 1 AS n").get()).rejects.toThrow("network unavailable");
+    expect(http.fetch).toHaveBeenCalledTimes(1);
+    expect(await db.prepare("SELECT 1 AS n").get()).toEqual({ n: 1 });
+    expect(http.log[0].sql).toBe("PRAGMA foreign_keys = ON");
+  });
+
+  it("reports a lost write response without replaying a possibly committed write", async () => {
+    await db.exec("CREATE TABLE example (n INTEGER)");
+    const transport = http.fetch.getMockImplementation()!;
+    http.fetch.mockImplementationOnce(async (...args) => {
+      await transport(...args);
+      throw new Error("lost write response");
+    });
+    await expect(db.prepare("INSERT INTO example VALUES (?)").run(1)).rejects.toThrow("lost write response");
+    expect(http.log.filter((l) => l.sql === "INSERT INTO example VALUES (?)")).toHaveLength(1);
+    expect(await db.prepare("SELECT * FROM example").all()).toEqual([{ n: 1 }]);
+  });
+
+  it("cannot continue or commit on a new stream after a caught transaction transport failure", async () => {
+    await db.exec("CREATE TABLE example (n INTEGER)");
+    await expect(db.transaction(async () => {
+      http.fetch.mockRejectedValueOnce(new Error("transaction transport lost"));
+      await expect(db.prepare("INSERT INTO example VALUES (1)").run()).rejects.toThrow("transaction transport lost");
+      await expect(db.prepare("INSERT INTO example VALUES (2)").run()).rejects.toThrow("transaction stream was lost");
+    }).immediate()).rejects.toThrow("transaction stream was lost");
+    expect(http.log.some((l) => l.sql === "INSERT INTO example VALUES (2)")).toBe(false);
+    expect(http.log.some((l) => l.sql === "COMMIT")).toBe(false);
+  });
+
+  it("closes the SDK stream, is idempotent and rejects subsequent operations", async () => {
+    await db.prepare("SELECT 1 AS n").get();
+    expect(http.streams.size).toBe(1);
+    await db.close();
+    expect(http.streams.size).toBe(0);
+    const calls = http.fetch.mock.calls.length;
+    await db.close();
+    await expect(db.prepare("SELECT 1").get()).rejects.toThrow("closed");
+    expect(http.fetch).toHaveBeenCalledTimes(calls);
+  });
+
+  it("can close unused adapters without network requests", async () => {
+    await db.close();
+    expect(http.fetch).not.toHaveBeenCalled();
+  });
+
+  it.each(["http://study.example.invalid", "file:study.db", "libsql://study.example.invalid", "https://name:password@study.example.invalid", "https://study.example.invalid?tls=false"])(
+    "rejects invalid or insecure URL %s before HTTP", (invalid) => {
+      expect(() => openTursoDatabase(invalid, "test-token")).toThrow("Turso requires");
+      expect(http.fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  it("requires a token and accepts the supplied Turso URL without connecting", () => {
+    expect(() => openTursoDatabase(url, " ")).toThrow("authentication token");
+    expect(() => openTursoDatabase("turso://trustableai-bibekgupta3333.aws-us-east-1.turso.io", "test-token")).not.toThrow();
+    expect(http.fetch).not.toHaveBeenCalled();
   });
 });

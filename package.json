@@ -6,15 +6,17 @@
   "description": "Wizard-of-Oz study app: AI accuracy labels on made-up social media posts (CEN5728 Group 4, v3).",
   "scripts": {
     "dev": "concurrently -k -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "tsx watch server/index.ts",
+    "dev:server": "tsx watch --env-file-if-exists=.env --env-file-if-exists=.env.local server/index.ts",
     "dev:client": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
-    "start": "NODE_ENV=production tsx server/index.ts",
+    "start": "NODE_ENV=production tsx --env-file-if-exists=.env --env-file-if-exists=.env.local server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:setup": "tsx --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/setup-turso.ts"
   },
   "dependencies": {
+    "@tursodatabase/serverless": "^1.4.1",
     "better-sqlite3": "^12.4.1",
     "express": "^5.1.0",
     "react": "^18.3.1",
@@ -39,5 +41,8 @@
     "typescript": "^5.8.3",
     "vite": "^6.3.5",
     "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }

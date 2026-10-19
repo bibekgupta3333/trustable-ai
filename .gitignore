@@ -5,3 +5,7 @@ data/*.db-*
 data/backups/
 *.log
 .gstack/
+
+.vercel/
+.env*
+!.env.example

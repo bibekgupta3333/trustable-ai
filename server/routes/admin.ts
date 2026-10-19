@@ -1,5 +1,5 @@
 import express from "express";
-import type Database from "better-sqlite3";
+import { asAsyncDatabase, type DatabaseInput } from "../db/async";
 import { getSession, listSessions, setStatus, deleteSession } from "../db/repo";
 import {
   trialsCsv, surveysCsv, eventsCsv, exitCsv, sessionsJson, participantsCsv, kpisCsv, exportIndex,
@@ -8,7 +8,7 @@ import { CURRENT_PROTOCOL, type PostBank } from "../../shared/types";
 import { assignShortFromBank } from "../../shared/counterbalance";
 import { computeKpis } from "../kpi";
 
-type Exporter = (db: Database.Database) => string;
+type Exporter = (db: DatabaseInput) => Promise<string>;
 
 const EXPORTS: Record<string, { build: Exporter; contentType: string; bom: boolean }> = {
   "trials.csv": { build: trialsCsv, contentType: "text/csv; charset=utf-8", bom: true },
@@ -41,19 +41,19 @@ export function adminAccess(
   return isLoopback(req.remoteAddress) ? "ok" : "forbidden";
 }
 
-/** session_id -> last_activity_at, read only if the column exists (added by the v2 migration). */
-function lastActivityMap(db: Database.Database): Map<string, string | null> {
-  const cols = db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[];
-  if (!cols.some((c) => c.name === "last_activity_at")) return new Map();
-  const rows = db.prepare("SELECT session_id, last_activity_at FROM sessions").all() as {
+/** session_id -> last_activity_at (present after startup migrations). */
+async function lastActivityMap(input: DatabaseInput): Promise<Map<string, string | null>> {
+  const db = asAsyncDatabase(input);
+  const rows = await db.prepare("SELECT session_id, last_activity_at FROM sessions").all() as {
     session_id: string;
     last_activity_at: string | null;
   }[];
   return new Map(rows.map((r) => [r.session_id, r.last_activity_at ?? null]));
 }
 
-export function adminRouter(deps: { db: Database.Database; adminToken?: string; bank?: PostBank }): express.Router {
-  const { db, adminToken, bank } = deps;
+export function adminRouter(deps: { db: DatabaseInput; adminToken?: string; bank?: PostBank }): express.Router {
+  const { adminToken, bank } = deps;
+  const db = asAsyncDatabase(deps.db);
   const router = express.Router();
 
   // Header for API calls, ?token= for downloads.
@@ -69,13 +69,14 @@ export function adminRouter(deps: { db: Database.Database; adminToken?: string; 
     res.status(403).json({ error: "forbidden", detail: "admin is only available on this computer unless ADMIN_TOKEN is set" });
   });
 
-  router.get("/kpis", (req, res) => {
+  router.get("/kpis", async (req, res) => {
     const protocol = req.query.protocolVersion ?? CURRENT_PROTOCOL;
     if (protocol !== "all" && protocol !== "legacy-full-v1" && protocol !== "calibrated-brief-v1" && protocol !== "calibrated-full-v1" && protocol !== "calibrated-media-full-v1") {
       return void res.status(400).json({ error: "validation", detail: "invalid protocolVersion" });
     }
+    const kpis = await db.transaction(async () => computeKpis(db, new Date(), protocol))();
     res.setHeader("Cache-Control", "no-store");
-    res.json(computeKpis(db, new Date(), protocol));
+    res.json(kpis);
   });
 
   router.get("/assignments/:pid", (req, res) => {
@@ -87,44 +88,57 @@ export function adminRouter(deps: { db: Database.Database; adminToken?: string; 
     res.json(assignShortFromBank(pid, bank));
   });
 
-  router.get("/sessions", (_req, res) => {
-    const last = lastActivityMap(db);
-    res.json(
-      listSessions(db).map((r) => ({
+  router.get("/sessions", async (_req, res) => {
+    const sessions = await db.transaction(async () => {
+      const last = await lastActivityMap(db);
+      return (await listSessions(db)).map((r) => ({
         ...r,
         lastActivityAt: (r as { lastActivityAt?: string | null }).lastActivityAt ?? last.get(r.sessionId) ?? null,
-      })),
-    );
+      }));
+    })();
+    res.json(sessions);
   });
 
-  router.post("/sessions/:id/abandon", (req, res) => {
-    const s = getSession(db, req.params.id);
-    if (!s) return void res.status(404).json({ error: "not_found", detail: "session not found" });
-    if (s.status !== "in_progress") {
+  router.post("/sessions/:id/abandon", async (req, res) => {
+    const outcome = await db.transaction(async () => {
+      const s = await getSession(db, req.params.id);
+      if (!s) return { error: "not_found" as const };
+      if (s.status !== "in_progress") return { error: "conflict" as const, status: s.status };
+      await setStatus(db, s.sessionId, "abandoned", new Date().toISOString());
+      return { error: null };
+    }).immediate();
+    if (outcome.error === "not_found")
+      return void res.status(404).json({ error: "not_found", detail: "session not found" });
+    if (outcome.error === "conflict") {
       return void res
         .status(409)
-        .json({ error: "conflict", detail: `only in_progress sessions can be abandoned (status: ${s.status})` });
+        .json({ error: "conflict", detail: `only in_progress sessions can be abandoned (status: ${outcome.status})` });
     }
-    setStatus(db, s.sessionId, "abandoned", new Date().toISOString());
     res.status(204).end();
   });
 
-  router.delete("/sessions/:id", (req, res) => {
-    const s = getSession(db, req.params.id);
-    if (!s) return void res.status(404).json({ error: "not_found", detail: "session not found" });
-    deleteSession(db, s.sessionId);
+  router.delete("/sessions/:id", async (req, res) => {
+    const deleted = await db.transaction(async () => {
+      const s = await getSession(db, req.params.id);
+      if (!s) return false;
+      await deleteSession(db, s.sessionId);
+      return true;
+    }).immediate();
+    if (!deleted) return void res.status(404).json({ error: "not_found", detail: "session not found" });
     res.status(204).end();
   });
 
-  router.get("/export", (_req, res) => {
+  router.get("/export", async (_req, res) => {
+    const index = await db.transaction(async () => exportIndex(db))();
     res.setHeader("Cache-Control", "no-store");
-    res.json(exportIndex(db));
+    res.json(index);
   });
 
-  router.get("/export/:name", (req, res) => {
+  router.get("/export/:name", async (req, res) => {
     const spec = Object.hasOwn(EXPORTS, req.params.name) ? EXPORTS[req.params.name] : undefined;
     if (!spec) return void res.status(404).json({ error: "not_found", detail: `unknown export: ${req.params.name}` });
-    const body = (spec.bom ? "﻿" : "") + spec.build(db);
+    const data = await db.transaction(async () => spec.build(db))();
+    const body = (spec.bom ? "﻿" : "") + data;
     res.setHeader("Content-Type", spec.contentType);
     res.setHeader("Content-Disposition", `attachment; filename="${exportFilename(req.params.name)}"`);
     res.setHeader("Cache-Control", "no-store");

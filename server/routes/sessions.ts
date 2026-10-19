@@ -1,6 +1,6 @@
 // Participant session endpoints: /api/sessions/...
 import express from "express";
-import type Database from "better-sqlite3";
+import { asAsyncDatabase, type DatabaseInput } from "../db/async";
 import { CURRENT_PROTOCOL } from "../../shared/types";
 import type { Post, PostBank } from "../../shared/types";
 import type { Cursor, SessionView, TrialSaved } from "../../shared/api";
@@ -17,7 +17,7 @@ import {
 } from "./participant";
 
 export interface SessionsDeps {
-  db: Database.Database;
+  db: DatabaseInput;
   bank: PostBank;
   appVersion: string;
   postBankHash: string;
@@ -26,17 +26,18 @@ export interface SessionsDeps {
 }
 
 export function sessionsRouter(deps: SessionsDeps): express.Router {
-  const { db, bank, appVersion, postBankHash, participantSalt, staleMinutes } = deps;
+  const { bank, appVersion, postBankHash, participantSalt, staleMinutes } = deps;
+  const db = asAsyncDatabase(deps.db);
   const router = express.Router();
   const postsById = new Map<string, Post>(bank.posts.map((p) => [p.id, p]));
 
-  const load = (id: string): SessionView => {
-    const s = getSession(db, id);
+  const load = async (id: string): Promise<SessionView> => {
+    const s = await getSession(db, id);
     if (!s) throw notFound("session not found");
     return s;
   };
-  const loadActive = (id: string): SessionView => {
-    const s = load(id);
+  const loadActive = async (id: string): Promise<SessionView> => {
+    const s = await load(id);
     if (s.status !== "in_progress") throw new HttpError(409, "conflict", `session is ${s.status}`);
     return s;
   };
@@ -55,12 +56,12 @@ export function sessionsRouter(deps: SessionsDeps): express.Router {
   const countSurveys = db.prepare("SELECT COUNT(*) AS n FROM block_surveys WHERE session_id = ?");
 
   // Self-start: 201 new, 200 resume (same code, in_progress), 409 already_participated, 400 invalid.
-  router.post("/", (req, res) => {
+  router.post("/", async (req, res) => {
     const o = asObject(req.body);
     const code = normaliseParticipantCode(o.participantCode);
     if (o.consequenceBanner !== undefined && typeof o.consequenceBanner !== "boolean")
       throw new ValidationError("consequenceBanner must be a boolean");
-    const result = startOrResumeSession(db, {
+    const result = await startOrResumeSession(db, {
       participantHash: hashParticipantCode(participantSalt, code),
       staleMinutes,
       assign: (pid) => assignShortFromBank(pid, bank),
@@ -74,39 +75,46 @@ export function sessionsRouter(deps: SessionsDeps): express.Router {
     }
   });
 
-  router.get("/:id", (req, res) => {
-    res.json(load(req.params.id));
+  router.get("/:id", async (req, res) => {
+    res.json(await load(req.params.id));
   });
 
-  router.post("/:id/resume", (req, res) => {
-    const s = loadActive(req.params.id);
-    incrementResume(db, s.sessionId);
-    touchActivity(db, s.sessionId);
-    res.json(load(s.sessionId));
+  router.post("/:id/resume", async (req, res) => {
+    const result = await db.transaction(async () => {
+      const s = await loadActive(req.params.id);
+      await incrementResume(db, s.sessionId);
+      await touchActivity(db, s.sessionId);
+      return load(s.sessionId);
+    }).immediate();
+    res.json(result);
   });
 
   // Voluntary participant exit; saved responses remain, and repeat exit requests are safe.
-  router.post("/:id/cancel", (req, res) => {
-    const s = load(req.params.id);
-    if (s.status === "completed") throw new HttpError(409, "conflict", "session is completed");
-    db.transaction(() => {
-      if (s.status === "in_progress") setStatus(db, s.sessionId, "abandoned", new Date().toISOString());
-      updateCursor(db, s.sessionId, { ...s.cursor, phase: "done" });
-      touchActivity(db, s.sessionId);
-    })();
-    res.json(load(s.sessionId));
+  router.post("/:id/cancel", async (req, res) => {
+    const result = await db.transaction(async () => {
+      const s = await load(req.params.id);
+      if (s.status === "completed") throw new HttpError(409, "conflict", "session is completed");
+      if (s.status === "in_progress") await setStatus(db, s.sessionId, "abandoned", new Date().toISOString());
+      await updateCursor(db, s.sessionId, { ...s.cursor, phase: "done" });
+      await touchActivity(db, s.sessionId);
+      return load(s.sessionId);
+    }).immediate();
+    res.json(result);
   });
 
-  router.post("/:id/consent", (req, res) => {
-    const s = loadActive(req.params.id);
-    if (!s.consentAt) recordConsent(db, s.sessionId, new Date().toISOString());
-    if (s.cursor.phase === "consent") updateCursor(db, s.sessionId, { blockIndex: 1, positionInBlock: 1, phase: "instructions" });
-    touchActivity(db, s.sessionId);
-    res.json(load(s.sessionId));
+  router.post("/:id/consent", async (req, res) => {
+    const result = await db.transaction(async () => {
+      const s = await loadActive(req.params.id);
+      if (!s.consentAt) await recordConsent(db, s.sessionId, new Date().toISOString());
+      if (s.cursor.phase === "consent") await updateCursor(db, s.sessionId, { blockIndex: 1, positionInBlock: 1, phase: "instructions" });
+      await touchActivity(db, s.sessionId);
+      return load(s.sessionId);
+    }).immediate();
+    res.json(result);
   });
 
-  router.get("/:id/presentation/:block/:pos", (req, res) => {
-    const s = load(req.params.id);
+  router.get("/:id/presentation/:block/:pos", async (req, res) => {
+    const s = await load(req.params.id);
     const block = Number(req.params.block);
     const pos = Number(req.params.pos);
     if (!Number.isInteger(block) || block < 1 || block > 4 || !Number.isInteger(pos) || pos < 1)
@@ -118,87 +126,95 @@ export function sessionsRouter(deps: SessionsDeps): express.Router {
     res.json(buildPresentation(post, plan.condition, { contextMedia: s.protocolVersion === "calibrated-media-full-v1" }));
   });
 
-  router.post("/:id/trials", (req, res) => {
-    const s = loadActive(req.params.id);
-    const sub = validateTrialSubmission(req.body);
-    const plan = blockPlan(s, sub.blockIndex);
-    if (sub.positionInBlock > plan.postOrder.length)
-      throw new ValidationError("positionInBlock is outside the saved block plan");
-    const post = postsById.get(plan.postOrder[sub.positionInBlock - 1]);
-    if (!post) throw new HttpError(500, "invariant", "planned post missing from bank");
-    const offset = s.blocks.filter((b) => b.blockIndex < sub.blockIndex).reduce((n, b) => n + b.postOrder.length, 0);
-    const trial = deriveTrial(s.pid, plan, post, sub, offset);
-    const cursor = cursorAfterTrial(sub.blockIndex, sub.positionInBlock, plan.postOrder.length);
-    db.transaction(() => {
-      insertTrial(db, s.sessionId, trial); // ConflictError on duplicate -> 409
-      markBlockStarted.run(trial.labelShownAt, s.sessionId, trial.blockIndex);
-      if (trial.positionInBlock === plan.postOrder.length) markBlockEnded.run(trial.respondedAt, s.sessionId, trial.blockIndex);
-      updateCursor(db, s.sessionId, cursor);
-      touchActivity(db, s.sessionId);
-    })();
-    const out: TrialSaved = { trialId: trial.trialId, cursor };
-    res.status(201).json(out);
+  router.post("/:id/trials", async (req, res) => {
+    const result = await db.transaction(async () => {
+      const s = await loadActive(req.params.id);
+      const sub = validateTrialSubmission(req.body);
+      const plan = blockPlan(s, sub.blockIndex);
+      if (sub.positionInBlock > plan.postOrder.length)
+        throw new ValidationError("positionInBlock is outside the saved block plan");
+      const post = postsById.get(plan.postOrder[sub.positionInBlock - 1]);
+      if (!post) throw new HttpError(500, "invariant", "planned post missing from bank");
+      const offset = s.blocks.filter((b) => b.blockIndex < sub.blockIndex).reduce((n, b) => n + b.postOrder.length, 0);
+      const trial = deriveTrial(s.pid, plan, post, sub, offset);
+      const cursor = cursorAfterTrial(sub.blockIndex, sub.positionInBlock, plan.postOrder.length);
+      await insertTrial(db, s.sessionId, trial); // ConflictError on duplicate -> 409
+      await markBlockStarted.run(trial.labelShownAt, s.sessionId, trial.blockIndex);
+      if (trial.positionInBlock === plan.postOrder.length) await markBlockEnded.run(trial.respondedAt, s.sessionId, trial.blockIndex);
+      await updateCursor(db, s.sessionId, cursor);
+      await touchActivity(db, s.sessionId);
+      const out: TrialSaved = { trialId: trial.trialId, cursor };
+      return out;
+    }).immediate();
+    res.status(201).json(result);
   });
 
-  router.post("/:id/events", (req, res) => {
-    const s = load(req.params.id);
-    let body: unknown = req.body;
-    if (typeof body === "string") {
-      try {
-        body = JSON.parse(body);
-      } catch {
-        throw new ValidationError("events body is not valid JSON");
+  router.post("/:id/events", async (req, res) => {
+    const result = await db.transaction(async () => {
+      const s = await load(req.params.id);
+      let body: unknown = req.body;
+      if (typeof body === "string") {
+        try {
+          body = JSON.parse(body);
+        } catch {
+          throw new ValidationError("events body is not valid JSON");
+        }
       }
-    }
-    const evs = validateEvents(body);
-    const inserted = evs.length ? insertEvents(db, s.sessionId, evs) : 0;
-    if (s.status === "in_progress") touchActivity(db, s.sessionId);
-    res.json({ inserted });
+      const evs = validateEvents(body);
+      const inserted = evs.length ? await insertEvents(db, s.sessionId, evs) : 0;
+      if (s.status === "in_progress") await touchActivity(db, s.sessionId);
+      return { inserted };
+    }).immediate();
+    res.json(result);
   });
 
-  router.put("/:id/cursor", (req, res) => {
-    const s = loadActive(req.params.id);
-    const cursor = validateCursor(req.body);
-    if (cursor.positionInBlock > blockPlan(s, cursor.blockIndex).postOrder.length)
-      throw new ValidationError("positionInBlock is outside the saved block plan");
-    updateCursor(db, s.sessionId, cursor);
-    touchActivity(db, s.sessionId);
+  router.put("/:id/cursor", async (req, res) => {
+    await db.transaction(async () => {
+      const s = await loadActive(req.params.id);
+      const cursor = validateCursor(req.body);
+      if (cursor.positionInBlock > blockPlan(s, cursor.blockIndex).postOrder.length)
+        throw new ValidationError("positionInBlock is outside the saved block plan");
+      await updateCursor(db, s.sessionId, cursor);
+      await touchActivity(db, s.sessionId);
+    }).immediate();
     res.status(204).end();
   });
 
-  router.post("/:id/block-surveys", (req, res) => {
-    const s = loadActive(req.params.id);
-    const sub = validateBlockSurvey(req.body);
-    const expected = s.protocolVersion === "calibrated-brief-v1" ? "brief-v1" : "full-v1";
-    if ((sub.questionnaireVersion ?? "full-v1") !== expected)
-      throw new ValidationError(`questionnaireVersion must be ${expected} for the stored session protocol`);
-    const plan = blockPlan(s, sub.blockIndex);
-    const blockTrials = getTrials(db, s.sessionId).filter((t) => t.blockIndex === sub.blockIndex);
-    if (blockTrials.length !== plan.postOrder.length)
-      throw new ValidationError(`block ${sub.blockIndex} has ${blockTrials.length} of ${plan.postOrder.length} trials saved`);
-    const survey = scoreBlockSurvey(sub, plan.condition, blockTrials, TRUST_ITEM_IDS, new Date().toISOString());
-    const cursor = cursorAfterSurvey(sub.blockIndex, plan.postOrder.length);
-    db.transaction(() => {
-      insertBlockSurvey(db, s.sessionId, survey); // ConflictError on duplicate -> 409
-      updateCursor(db, s.sessionId, cursor);
-      touchActivity(db, s.sessionId);
-    })();
-    res.status(201).json({ nWrongDetected: survey.nWrongDetected, cursor });
+  router.post("/:id/block-surveys", async (req, res) => {
+    const result = await db.transaction(async () => {
+      const s = await loadActive(req.params.id);
+      const sub = validateBlockSurvey(req.body);
+      const expected = s.protocolVersion === "calibrated-brief-v1" ? "brief-v1" : "full-v1";
+      if ((sub.questionnaireVersion ?? "full-v1") !== expected)
+        throw new ValidationError(`questionnaireVersion must be ${expected} for the stored session protocol`);
+      const plan = blockPlan(s, sub.blockIndex);
+      const blockTrials = (await getTrials(db, s.sessionId)).filter((t) => t.blockIndex === sub.blockIndex);
+      if (blockTrials.length !== plan.postOrder.length)
+        throw new ValidationError(`block ${sub.blockIndex} has ${blockTrials.length} of ${plan.postOrder.length} trials saved`);
+      const survey = scoreBlockSurvey(sub, plan.condition, blockTrials, TRUST_ITEM_IDS, new Date().toISOString());
+      const cursor = cursorAfterSurvey(sub.blockIndex, plan.postOrder.length);
+      await insertBlockSurvey(db, s.sessionId, survey); // ConflictError on duplicate -> 409
+      await updateCursor(db, s.sessionId, cursor);
+      await touchActivity(db, s.sessionId);
+      return { nWrongDetected: survey.nWrongDetected, cursor };
+    }).immediate();
+    res.status(201).json(result);
   });
 
-  router.post("/:id/exit-survey", (req, res) => {
-    const s = loadActive(req.params.id);
-    const sub = validateExitSurvey(req.body);
-    const n = (countSurveys.get(s.sessionId) as { n: number }).n;
-    if (n !== 4) throw new ValidationError(`${n} of 4 block surveys saved`);
-    const now = new Date().toISOString();
-    db.transaction(() => {
-      insertExitSurvey(db, s.sessionId, exitWithTimestamp(sub, now));
-      setStatus(db, s.sessionId, "completed", now);
-      updateCursor(db, s.sessionId, { blockIndex: 4, positionInBlock: blockPlan(s, 4).postOrder.length as Cursor["positionInBlock"], phase: "done" });
-      touchActivity(db, s.sessionId, now);
-    })();
-    res.json(load(s.sessionId));
+  router.post("/:id/exit-survey", async (req, res) => {
+    const result = await db.transaction(async () => {
+      const s = await loadActive(req.params.id);
+      const sub = validateExitSurvey(req.body);
+      const n = (await countSurveys.get(s.sessionId) as { n: number }).n;
+      if (n !== 4) throw new ValidationError(`${n} of 4 block surveys saved`);
+      const now = new Date().toISOString();
+      await insertExitSurvey(db, s.sessionId, exitWithTimestamp(sub, now));
+      await setStatus(db, s.sessionId, "completed", now);
+      await updateCursor(db, s.sessionId, { blockIndex: 4, positionInBlock: blockPlan(s, 4).postOrder.length as Cursor["positionInBlock"], phase: "done" });
+      await touchActivity(db, s.sessionId, now);
+      return load(s.sessionId);
+    }).immediate();
+    res.json(result);
   });
 
   return router;

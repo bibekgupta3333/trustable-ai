@@ -1,0 +1,12 @@
+.git/
+node_modules/
+data/
+.gstack/
+docs/screenshots/
+*.db
+*.db-*
+.env*
+!.env.example
+
+**/*.test.ts
+**/*.test.tsx

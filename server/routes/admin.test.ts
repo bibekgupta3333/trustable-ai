@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import express from "express";
 import request from "supertest";
 import type Database from "better-sqlite3";
@@ -50,6 +50,7 @@ let db: Database.Database;
 beforeEach(() => {
   db = openDb(":memory:");
 });
+afterEach(() => db.close());
 
 describe("admin token", () => {
   it("allows all requests when no token is configured", async () => {
@@ -107,10 +108,10 @@ describe("admin access without ADMIN_TOKEN (loopback only)", () => {
 
 describe("GET /kpis", () => {
   it("defaults to the current cohort and validates explicit cohort queries", async () => {
-    const legacy = createSession(db, assignment(1), OPTS);
-    const current = createSession(db, assignment(2), { ...OPTS, protocolVersion: "calibrated-full-v1" });
-    const media = createSession(db, assignment(3), { ...OPTS, protocolVersion: "calibrated-media-full-v1" });
-    for (const s of [legacy, current, media]) setStatus(db, s.sessionId, "completed", new Date().toISOString());
+    const legacy = await createSession(db, assignment(1), OPTS);
+    const current = await createSession(db, assignment(2), { ...OPTS, protocolVersion: "calibrated-full-v1" });
+    const media = await createSession(db, assignment(3), { ...OPTS, protocolVersion: "calibrated-media-full-v1" });
+    for (const s of [legacy, current, media]) await setStatus(db, s.sessionId, "completed", new Date().toISOString());
     const app = makeApp(db);
     const res = await request(app).get("/api/admin/kpis").expect(200);
     expect(res.body.cohort).toBe("calibrated-full-v1");
@@ -129,9 +130,9 @@ describe("GET /kpis", () => {
   });
 
   it("returns the Kpis shape", async () => {
-    const s = createSession(db, assignment(1), OPTS);
-    setStatus(db, s.sessionId, "completed", new Date().toISOString());
-    createSession(db, assignment(901), OPTS);
+    const s = await createSession(db, assignment(1), OPTS);
+    await setStatus(db, s.sessionId, "completed", new Date().toISOString());
+    await createSession(db, assignment(901), OPTS);
     const res = await request(makeApp(db)).get("/api/admin/kpis?protocolVersion=all").expect(200);
     expect(res.body.sessions).toMatchObject({ started: 1, completed: 1, inProgress: 0, completionRate: 1 });
     expect(res.body.byCondition).toHaveLength(4);
@@ -158,8 +159,8 @@ describe("GET /assignments/:pid", () => {
 
 describe("GET /sessions", () => {
   it("lists created sessions", async () => {
-    const s1 = createSession(db, assignment(1), OPTS);
-    const s2 = createSession(db, assignment(2), OPTS);
+    const s1 = await createSession(db, assignment(1), OPTS);
+    const s2 = await createSession(db, assignment(2), OPTS);
     const res = await request(makeApp(db)).get("/api/admin/sessions").expect(200);
     expect(res.body).toHaveLength(2);
     const ids = res.body.map((r: { sessionId: string }) => r.sessionId).sort();
@@ -172,9 +173,9 @@ describe("GET /sessions", () => {
 
 describe("POST /sessions/:id/abandon", () => {
   it("marks an in_progress session abandoned (204)", async () => {
-    const s = createSession(db, assignment(3), OPTS);
+    const s = await createSession(db, assignment(3), OPTS);
     await request(makeApp(db)).post(`/api/admin/sessions/${s.sessionId}/abandon`).expect(204);
-    expect(getSession(db, s.sessionId)?.status).toBe("abandoned");
+    expect((await getSession(db, s.sessionId))?.status).toBe("abandoned");
   });
 
   it("returns 404 for an unknown session", async () => {
@@ -182,21 +183,21 @@ describe("POST /sessions/:id/abandon", () => {
   });
 
   it("returns 409 when the session is not in_progress", async () => {
-    const s = createSession(db, assignment(4), OPTS);
-    setStatus(db, s.sessionId, "completed", new Date().toISOString());
+    const s = await createSession(db, assignment(4), OPTS);
+    await setStatus(db, s.sessionId, "completed", new Date().toISOString());
     const res = await request(makeApp(db)).post(`/api/admin/sessions/${s.sessionId}/abandon`).expect(409);
     expect(res.body.error).toBeTruthy();
-    expect(getSession(db, s.sessionId)?.status).toBe("completed");
+    expect((await getSession(db, s.sessionId))?.status).toBe("completed");
     await request(makeApp(db)).post(`/api/admin/sessions/${s.sessionId}/abandon`).expect(409);
   });
 });
 
 describe("DELETE /sessions/:id", () => {
   it("deletes the session (204) and then 404s", async () => {
-    const s = createSession(db, assignment(5), OPTS);
+    const s = await createSession(db, assignment(5), OPTS);
     const app = makeApp(db);
     await request(app).delete(`/api/admin/sessions/${s.sessionId}`).expect(204);
-    expect(getSession(db, s.sessionId)).toBeNull();
+    expect(await getSession(db, s.sessionId)).toBeNull();
     await request(app).delete(`/api/admin/sessions/${s.sessionId}`).expect(404);
     const count = db.prepare("SELECT COUNT(*) AS n FROM blocks WHERE session_id = ?").get(s.sessionId) as { n: number };
     expect(count.n).toBe(0);
@@ -208,7 +209,7 @@ describe("GET /export/:name", () => {
 
   for (const name of ["trials.csv", "surveys.csv", "events.csv", "exit.csv", "participants.csv", "kpis.csv"]) {
     it(`serves ${name} as CSV with a BOM and attachment header`, async () => {
-      createSession(db, assignment(6), OPTS);
+      await createSession(db, assignment(6), OPTS);
       const res = await request(makeApp(db))
         .get(`/api/admin/export/${name}`)
         .buffer(true)
@@ -227,7 +228,7 @@ describe("GET /export/:name", () => {
   }
 
   it("serves sessions.json as JSON", async () => {
-    const s = createSession(db, assignment(7), OPTS);
+    const s = await createSession(db, assignment(7), OPTS);
     const res = await request(makeApp(db)).get("/api/admin/export/sessions.json").expect(200);
     expect(res.headers["content-type"]).toMatch(/^application\/json/);
     expect(res.headers["content-disposition"]).toMatch(datePrefix);
@@ -244,7 +245,7 @@ describe("GET /export/:name", () => {
 
 describe("GET /export (index)", () => {
   it("returns name, description and row count for all 7 exports", async () => {
-    createSession(db, assignment(8), OPTS);
+    await createSession(db, assignment(8), OPTS);
     const res = await request(makeApp(db)).get("/api/admin/export").expect(200);
     expect(res.headers["content-type"]).toMatch(/^application\/json/);
     expect(res.body.map((e: { name: string }) => e.name).sort()).toEqual(
@@ -279,7 +280,7 @@ describe("GET /export (index)", () => {
 
   it("participants.csv download never contains the stored hash", async () => {
     const hash = "f".repeat(64);
-    createSession(db, assignment(9), { ...OPTS, participantHash: hash });
+    await createSession(db, assignment(9), { ...OPTS, participantHash: hash });
     const res = await request(makeApp(db)).get("/api/admin/export/participants.csv").expect(200);
     expect(res.text).toContain("isPilot");
     expect(res.text).not.toContain(hash);

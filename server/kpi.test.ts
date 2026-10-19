@@ -85,9 +85,9 @@ describe("helpers", () => {
 });
 
 describe("computeKpis", () => {
-  it("returns zero counts and null rates on an empty DB", () => {
+  it("returns zero counts and null rates on an empty DB", async () => {
     const now = new Date("2026-10-17T12:00:00Z");
-    const k = computeKpis(db, now);
+    const k = await computeKpis(db, now);
     expect(k.generatedAt).toBe(now.toISOString());
     expect(k.sessions).toEqual({ started: 0, inProgress: 0, completed: 0, abandoned: 0, completionRate: null });
     expect(k.target).toEqual({ n: 32, minimum: 16, completed: 0, cycle1Completed: 0, cycle2Completed: 0 });
@@ -113,7 +113,7 @@ describe("computeKpis", () => {
     expect(k.dailyCompleted).toEqual([]);
   });
 
-  it("computes session, target, duration, condition, error-type, balance and daily KPIs", () => {
+  it("computes session, target, duration, condition, error-type, balance and daily KPIs", async () => {
     session("c1", 1, "completed", { order: "ABDC", startedAt: "2026-10-16T10:00:00.000Z", completedAt: "2026-10-16T10:10:00.000Z" });
     session("c2", 2, "completed", { order: "BCAD", startedAt: "2026-10-17T09:00:00.000Z", completedAt: "2026-10-17T09:20:00.000Z" });
     session("c3", 17, "completed", { order: "ABDC", startedAt: "2026-10-17T11:00:00.000Z", completedAt: "2026-10-17T11:30:00.000Z" });
@@ -134,7 +134,7 @@ describe("computeKpis", () => {
     survey("c2", "A", 3, 6, 5, 40);
     survey("ip", "A", 1, 1, 1, 100);
 
-    const k = computeKpis(db);
+    const k = await computeKpis(db);
     expect(k.sessions).toEqual({ started: 5, inProgress: 1, completed: 3, abandoned: 1, completionRate: 0.75 });
     expect(k.target).toMatchObject({ completed: 3, cycle1Completed: 2, cycle2Completed: 1 });
     expect(k.durationMin.median).toBe(20);
@@ -181,14 +181,14 @@ describe("computeKpis", () => {
     ]);
   });
 
-  it("excludes pilot pids >= 900 from every KPI", () => {
+  it("excludes pilot pids >= 900 from every KPI", async () => {
     session("pilot1", 900, "completed", { order: "CDBA", completedAt: "2026-10-17T10:15:00.000Z" });
     session("pilot2", 901, "in_progress");
     session("pilot3", 905, "abandoned");
     trial("pilot1", { condition: "B", correct: false, errorType: "false_alarm", agreed: false });
     survey("pilot1", "B", 7, 7, 7, 100);
 
-    const k = computeKpis(db);
+    const k = await computeKpis(db);
     expect(k.sessions).toEqual({ started: 0, inProgress: 0, completed: 0, abandoned: 0, completionRate: null });
     expect(k.target.completed).toBe(0);
     expect(k.durationMin.median).toBeNull();
@@ -200,7 +200,7 @@ describe("computeKpis", () => {
 });
 
 describe("calibrated reliance and protocol cohorts", () => {
-  it("uses separate correct/wrong denominators and excludes incomplete/pilot sessions", () => {
+  it("uses separate correct/wrong denominators and excludes incomplete/pilot sessions", async () => {
     session("current", 1, "completed");
     db.prepare("UPDATE sessions SET protocol_version = 'calibrated-brief-v1' WHERE session_id = ?").run("current");
     session("legacy", 2, "completed");
@@ -211,33 +211,33 @@ describe("calibrated reliance and protocol cohorts", () => {
       trial(id, { condition: "A", correct: true, agreed: false });
       trial(id, { condition: "A", correct: false, agreed: false });
     }
-    const current = computeKpis(db, undefined, "calibrated-brief-v1");
+    const current = await computeKpis(db, undefined, "calibrated-brief-v1");
     expect(current.cohort).toBe("calibrated-brief-v1");
     expect(current.sessions.started).toBe(1);
     expect(current.primaryOutcome).toEqual({ trials: 3, correctTrials: 2, wrongTrials: 1,
       correctAcceptanceRate: 0.5, wrongRejectionRate: 1, appropriateRelianceRate: 2 / 3,
       overrelianceRate: 0, underrelianceRate: 0.5 });
     expect(current.byCondition[0]).toMatchObject(current.primaryOutcome!);
-    expect(computeKpis(db, undefined, "legacy-full-v1").primaryOutcome?.trials).toBe(3);
-    expect(computeKpis(db).primaryOutcome?.trials).toBe(6);
+    expect((await computeKpis(db, undefined, "legacy-full-v1")).primaryOutcome?.trials).toBe(3);
+    expect((await computeKpis(db)).primaryOutcome?.trials).toBe(6);
     expect(current.byCondition[1].appropriateRelianceRate).toBeNull();
     expect(current.byCondition[1].correctAcceptanceRate).toBeNull();
     expect(current.byCondition[1].wrongRejectionRate).toBeNull();
   });
 
-  it.each([true, false])("does not treat always-agree=%s as calibrated behavior", (agreed) => {
+  it.each([true, false])("does not treat always-agree=%s as calibrated behavior", async (agreed) => {
     session("s", 1, "completed");
     trial("s", { condition: "A", correct: true, agreed });
     trial("s", { condition: "A", correct: true, agreed });
     trial("s", { condition: "A", correct: false, agreed });
-    expect(computeKpis(db).primaryOutcome).toMatchObject({
+    expect((await computeKpis(db)).primaryOutcome).toMatchObject({
       appropriateRelianceRate: agreed ? 2 / 3 : 1 / 3,
       correctAcceptanceRate: agreed ? 1 : 0, wrongRejectionRate: agreed ? 0 : 1,
       overrelianceRate: agreed ? 1 : 0, underrelianceRate: agreed ? 0 : 1,
     });
   });
 
-  it("keeps custom brief trust separate and excludes null scores from means", () => {
+  it("keeps custom brief trust separate and excludes null scores from means", async () => {
     session("full", 1, "completed");
     session("brief", 2, "completed");
     db.prepare("UPDATE sessions SET protocol_version = 'calibrated-brief-v1' WHERE session_id = 'brief'").run();
@@ -246,8 +246,8 @@ describe("calibrated reliance and protocol cohorts", () => {
       trust_mean, fairness1, fairness2, fairness_mean, tension, frustration_tlx, frustration_tlx_touched,
       n_wrong_detected, submitted_at, questionnaire_version, brief_trust)
       VALUES ('brief', 1, 'A', '[]', '[]', NULL, NULL, NULL, NULL, 4, 50, 1, 0, 't', 'brief-v1', 3)`).run();
-    expect(computeKpis(db).byCondition[0]).toMatchObject({ trustMean: 6, fairnessMean: 5, briefTrustMean: 3 });
-    expect(computeKpis(db, undefined, "calibrated-brief-v1").byCondition[0]).toMatchObject({
+    expect((await computeKpis(db)).byCondition[0]).toMatchObject({ trustMean: 6, fairnessMean: 5, briefTrustMean: 3 });
+    expect((await computeKpis(db, undefined, "calibrated-brief-v1")).byCondition[0]).toMatchObject({
       trustMean: null, fairnessMean: null, briefTrustMean: 3, tensionMean: 4, frustrationMean: 50,
     });
     expect(mean([null, 6, undefined])).toBe(6);

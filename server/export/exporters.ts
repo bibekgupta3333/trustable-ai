@@ -3,7 +3,7 @@
 // status) are filled from the sessions table when a repo row does not carry them, and a few likely
 // naming variants are accepted, so the exports do not depend on exactly how repo joins.
 // Row order is repo's (pid, session start, block/position or seq).
-import type Database from "better-sqlite3";
+import { asAsyncDatabase, type DatabaseInput } from "../db/async";
 import { toCsv } from "./csv";
 import { allEventRows, allExitRows, allSessionsFull, allSurveyRows, allTrialRows } from "../db/repo";
 import { computeKpis, median, mean, relianceSummary, PILOT_PID_MIN } from "../kpi";
@@ -45,8 +45,8 @@ const TRIAL_BOOLEANS = ["isAiCorrect", "agreed", "detectedError", "timingFlag", 
 
 interface SessionMeta { pid: number; conditionOrder: string; setRotation: number; status: string; plannedTrials: number; studyVariant: string; protocolVersion: StudyProtocol }
 
-function sessionMeta(db: Database.Database): Map<string, SessionMeta> {
-  const rows = db
+async function sessionMeta(db: DatabaseInput): Promise<Map<string, SessionMeta>> {
+  const rows = await asAsyncDatabase(db)
     .prepare(`SELECT s.session_id, s.pid, s.condition_order, s.set_rotation, s.status, s.protocol_version,
       (SELECT COALESCE(SUM(json_array_length(b.post_order)),0) FROM blocks b WHERE b.session_id=s.session_id) AS planned_trials FROM sessions s`)
     .all() as { session_id: string; pid: number; condition_order: string; set_rotation: number; status: string; protocol_version: StudyProtocol; planned_trials: number }[];
@@ -98,9 +98,9 @@ function withSession(row: Row, meta: Map<string, SessionMeta>): Row {
   };
 }
 
-export function trialRows(db: Database.Database): Row[] {
-  const meta = sessionMeta(db);
-  return allTrialRows(db).map((r) => {
+export async function trialRows(db: DatabaseInput): Promise<Row[]> {
+  const meta = await sessionMeta(db);
+  return (await allTrialRows(db)).map((r) => {
     const row = withSession(r, meta);
     row.set = pick(r, "set", "setId");
     for (const k of TRIAL_BOOLEANS) row[k] = toBool(row[k]);
@@ -110,9 +110,9 @@ export function trialRows(db: Database.Database): Row[] {
   });
 }
 
-export function surveyRows(db: Database.Database): Row[] {
-  const meta = sessionMeta(db);
-  return allSurveyRows(db).map((r) => {
+export async function surveyRows(db: DatabaseInput): Promise<Row[]> {
+  const meta = await sessionMeta(db);
+  return (await allSurveyRows(db)).map((r) => {
     const row = withSession(r, meta);
     const responses = toArray(r.trustResponses) as { raw?: unknown; scored?: unknown }[] | undefined;
     const raw = toArray(r.trustRaw) ?? responses?.map((x) => x?.raw);
@@ -128,24 +128,24 @@ export function surveyRows(db: Database.Database): Row[] {
   });
 }
 
-export function eventRows(db: Database.Database): Row[] {
-  const meta = sessionMeta(db);
-  return allEventRows(db).map((r) => withSession(r, meta));
+export async function eventRows(db: DatabaseInput): Promise<Row[]> {
+  const meta = await sessionMeta(db);
+  return (await allEventRows(db)).map((r) => withSession(r, meta));
 }
 
-export function exitRows(db: Database.Database): Row[] {
-  const meta = sessionMeta(db);
-  return allExitRows(db).map((r) => withSession(r, meta));
+export async function exitRows(db: DatabaseInput): Promise<Row[]> {
+  const meta = await sessionMeta(db);
+  return (await allExitRows(db)).map((r) => withSession(r, meta));
 }
 
-export function trialsCsv(db: Database.Database): string { return toCsv(trialRows(db), TRIAL_COLUMNS); }
-export function surveysCsv(db: Database.Database): string { return toCsv(surveyRows(db), SURVEY_COLUMNS); }
-export function eventsCsv(db: Database.Database): string { return toCsv(eventRows(db), EVENT_COLUMNS); }
-export function exitCsv(db: Database.Database): string { return toCsv(exitRows(db), EXIT_COLUMNS); }
+export async function trialsCsv(db: DatabaseInput): Promise<string> { return toCsv(await trialRows(db), TRIAL_COLUMNS); }
+export async function surveysCsv(db: DatabaseInput): Promise<string> { return toCsv(await surveyRows(db), SURVEY_COLUMNS); }
+export async function eventsCsv(db: DatabaseInput): Promise<string> { return toCsv(await eventRows(db), EVENT_COLUMNS); }
+export async function exitCsv(db: DatabaseInput): Promise<string> { return toCsv(await exitRows(db), EXIT_COLUMNS); }
 
 /** Array of full sessions (session + blocks + trials + surveys + exit + events), pretty-printed. */
-export function sessionsJson(db: Database.Database): string {
-  return JSON.stringify(allSessionsFull(db), null, 2);
+export async function sessionsJson(db: DatabaseInput): Promise<string> {
+  return JSON.stringify(await allSessionsFull(db), null, 2);
 }
 
 // ---------- participants.csv: one analysis-ready row per session (all statuses, pilots flagged) ----------
@@ -198,20 +198,20 @@ function groupBy<T extends { session_id: string }>(rows: T[]): Map<string, T[]> 
   return m;
 }
 
-export function participantRows(db: Database.Database): Row[] {
-  const meta = sessionMeta(db);
-  const sessions = db.prepare(
+export async function participantRows(db: DatabaseInput): Promise<Row[]> {
+  const meta = await sessionMeta(db);
+  const sessions = await asAsyncDatabase(db).prepare(
     `SELECT session_id, pid, status, condition_order, set_rotation, started_at, completed_at
        FROM sessions ORDER BY pid, started_at, session_id`,
   ).all() as PSession[];
-  const trials = groupBy(db.prepare(
+  const trials = groupBy(await asAsyncDatabase(db).prepare(
     `SELECT session_id, condition, is_ai_correct, error_type, agreed, detected_error, confidence, decision_time_ms, fact_sheet_opened
        FROM trials`,
   ).all() as PTrial[]);
-  const surveys = groupBy(db.prepare(
+  const surveys = groupBy(await asAsyncDatabase(db).prepare(
     `SELECT session_id, condition, trust_mean, fairness_mean, brief_trust, questionnaire_version, tension, frustration_tlx FROM block_surveys`,
   ).all() as PSurvey[]);
-  const exits = new Map((db.prepare(
+  const exits = new Map((await asAsyncDatabase(db).prepare(
     `SELECT session_id, age_range, gender, education, social_media_use, label_exposure, preferred_condition, comment
        FROM exit_surveys`,
   ).all() as PExit[]).map((x) => [x.session_id, x]));
@@ -275,7 +275,7 @@ export function participantRows(db: Database.Database): Row[] {
   });
 }
 
-export function participantsCsv(db: Database.Database): string { return toCsv(participantRows(db), PARTICIPANT_COLUMNS); }
+export async function participantsCsv(db: DatabaseInput): Promise<string> { return toCsv(await participantRows(db), PARTICIPANT_COLUMNS); }
 
 // ---------- kpis.csv: computeKpis(db) in long/tidy form ----------
 export const KPI_COLUMNS = ["section", "key", "metric", "value"];
@@ -305,25 +305,25 @@ export function kpiRowsFrom(k: Kpis): Row[] {
   return rows;
 }
 
-export function kpiRows(db: Database.Database, now: Date = new Date(), protocolVersion: StudyProtocol | "all" = CURRENT_PROTOCOL): Row[] { return kpiRowsFrom(computeKpis(db, now, protocolVersion)); }
-export function kpisCsv(db: Database.Database, now: Date = new Date(), protocolVersion: StudyProtocol | "all" = CURRENT_PROTOCOL): string { return toCsv(kpiRows(db, now, protocolVersion), KPI_COLUMNS); }
+export async function kpiRows(db: DatabaseInput, now: Date = new Date(), protocolVersion: StudyProtocol | "all" = CURRENT_PROTOCOL): Promise<Row[]> { return kpiRowsFrom(await computeKpis(db, now, protocolVersion)); }
+export async function kpisCsv(db: DatabaseInput, now: Date = new Date(), protocolVersion: StudyProtocol | "all" = CURRENT_PROTOCOL): Promise<string> { return toCsv(await kpiRows(db, now, protocolVersion), KPI_COLUMNS); }
 
 // ---------- export index (GET /api/admin/export) ----------
 export interface ExportIndexEntry { name: string; description: string; rows: number }
 
-const count = (db: Database.Database, table: string) =>
-  (db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
+const count = async (db: DatabaseInput, table: string): Promise<number> =>
+  (await asAsyncDatabase(db).prepare(`SELECT COUNT(*) AS n FROM ${table}`).get() as { n: number }).n;
 
-export const EXPORT_INDEX: { name: string; description: string; rows: (db: Database.Database) => number }[] = [
+export const EXPORT_INDEX: { name: string; description: string; rows: (db: DatabaseInput) => Promise<number> }[] = [
   { name: "participants.csv", description: "One analysis-ready row per session (all statuses, pilots flagged): totals, detection, per-condition scores and exit answers.", rows: (db) => count(db, "sessions") },
   { name: "trials.csv", description: "One row per trial: post, AI label, truth, agreement, detection, confidence, timing and explanation use.", rows: (db) => count(db, "trials") },
   { name: "surveys.csv", description: "One row per block survey: versioned brief trust or legacy Jian items and fairness; tension and frustration.", rows: (db) => count(db, "block_surveys") },
   { name: "events.csv", description: "Interaction log: one row per client event (fact sheet, Why?, factor expands, visibility).", rows: (db) => count(db, "events") },
   { name: "exit.csv", description: "One row per exit survey: demographics, social media use, label exposure, preferred condition, comment.", rows: (db) => count(db, "exit_surveys") },
-  { name: "kpis.csv", description: "Dashboard KPIs in long form (section, key, metric, value); current calibrated-full-v1 cohort; outcomes use completed non-pilot sessions.", rows: (db) => kpiRows(db).length },
+  { name: "kpis.csv", description: "Dashboard KPIs in long form (section, key, metric, value); current calibrated-full-v1 cohort; outcomes use completed non-pilot sessions.", rows: async (db) => (await kpiRows(db)).length },
   { name: "sessions.json", description: "Full nested record of every session (blocks, trials, surveys, exit, events) for archiving.", rows: (db) => count(db, "sessions") },
 ];
 
-export function exportIndex(db: Database.Database): ExportIndexEntry[] {
-  return EXPORT_INDEX.map((e) => ({ name: e.name, description: e.description, rows: e.rows(db) }));
+export async function exportIndex(db: DatabaseInput): Promise<ExportIndexEntry[]> {
+  return Promise.all(EXPORT_INDEX.map(async (e) => ({ name: e.name, description: e.description, rows: await e.rows(db) })));
 }

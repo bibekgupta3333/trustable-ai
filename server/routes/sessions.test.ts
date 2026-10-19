@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import type { Factor, Post, PostBank, PracticePost, SetId } from "../../shared/types";
 import type { Cursor, SessionView, TrialSubmission, BlockSurveySubmission } from "../../shared/api";
 import { openDb } from "../db/db";
+import { asAsyncDatabase } from "../db/async";
 import { createApp } from "../app";
 import { assignmentPreview } from "./participant";
 import { assignFromBank, assignShortFromBank } from "../../shared/counterbalance";
@@ -56,11 +57,11 @@ const byId = new Map(bank.posts.map((p) => [p.id, p]));
 
 // ---------- helpers ----------
 let db: Database.Database;
-let app: ReturnType<typeof createApp>;
+let app: Awaited<ReturnType<typeof createApp>>;
 
-beforeEach(() => {
+beforeEach(async () => {
   db = openDb(":memory:");
-  app = createApp({ db, bank, appVersion: "test", participantSalt: "test-salt" });
+  app = await createApp({ db, bank, appVersion: "test", participantSalt: "test-salt" });
 });
 afterEach(() => db.close());
 
@@ -73,7 +74,7 @@ async function newSession(code = `person-${++codeCounter}@uni.edu`): Promise<Ses
 const start = (participantCode: unknown, extra: object = {}) =>
   request(app).post("/api/sessions").send({ participantCode, ...extra });
 
-function legacySession(code = "legacy-session", short = false): SessionView {
+async function legacySession(code = "legacy-session", short = false): Promise<SessionView> {
   return createSession(db, short ? assignShortFromBank(77, bank) : assignFromBank(77, bank), {
     consequenceBanner: false, anxiety: false, postBankHash: "legacy-bank", appVersion: "legacy",
     participantHash: hashParticipantCode("test-salt", code),
@@ -135,6 +136,14 @@ const trialRow = (sessionId: string, block: number, pos: number) =>
 
 // ---------- tests ----------
 describe("basic routes", () => {
+  it("accepts an already normalized database without deployment configuration", async () => {
+    const normalizedApp = await createApp({ db: asAsyncDatabase(db), bank, appVersion: "normalized-test" });
+    const created = await request(normalizedApp).post("/api/sessions").send({ participantCode: "normalized-local" }).expect(201);
+    expect(created.body.protocolVersion).toBe("calibrated-full-v1");
+    expect(created.body.blocks.map((b: { postOrder: string[] }) => b.postOrder.length)).toEqual([2, 2, 2, 2]);
+    await request(normalizedApp).get(`/api/sessions/${created.body.sessionId}`).expect(200);
+  });
+
   it("health returns hash and version", async () => {
     const r = await request(app).get("/api/health");
     expect(r.status).toBe(200);
@@ -238,7 +247,7 @@ describe("sessions", () => {
     }
     // a different salt gives a different hash for the same code
     const db2 = openDb(":memory:");
-    const app2 = createApp({ db: db2, bank, appVersion: "test", participantSalt: "other-salt" });
+    const app2 = await createApp({ db: db2, bank, appVersion: "test", participantSalt: "other-salt" });
     await request(app2).post("/api/sessions").send({ participantCode: code });
     const h2 = (db2.prepare("SELECT participant_hash FROM sessions").get() as { participant_hash: string }).participant_hash;
     expect(h2).not.toBe(h);
@@ -247,10 +256,10 @@ describe("sessions", () => {
 
   it("generates a salt once into meta when PARTICIPANT_SALT is unset", async () => {
     const db2 = openDb(":memory:");
-    const app2 = createApp({ db: db2, bank, appVersion: "test" });
+    const app2 = await createApp({ db: db2, bank, appVersion: "test" });
     const salt = (db2.prepare("SELECT value FROM meta WHERE key = 'participant_salt'").get() as { value: string }).value;
     expect(salt).toMatch(/^[0-9a-f]{64}$/);
-    createApp({ db: db2, bank, appVersion: "test" });
+    await createApp({ db: db2, bank, appVersion: "test" });
     expect((db2.prepare("SELECT value FROM meta WHERE key = 'participant_salt'").get() as { value: string }).value).toBe(salt);
     expect((await request(app2).post("/api/sessions").send({ participantCode: "abc" })).status).toBe(201);
     expect((await request(app2).post("/api/sessions").send({ participantCode: "ABC" })).status).toBe(200);
@@ -284,7 +293,7 @@ describe("sessions", () => {
 
   it("STALE_MINUTES is configurable", async () => {
     const db2 = openDb(":memory:");
-    const app2 = createApp({ db: db2, bank, appVersion: "test", participantSalt: "s", staleMinutes: 5 });
+    const app2 = await createApp({ db: db2, bank, appVersion: "test", participantSalt: "s", staleMinutes: 5 });
     const s = (await request(app2).post("/api/sessions").send({ participantCode: "aaa" })).body as SessionView;
     db2.prepare("UPDATE sessions SET last_activity_at = ?").run(new Date(Date.now() - 6 * 60_000).toISOString());
     expect((await request(app2).post("/api/sessions").send({ participantCode: "bbb" })).body.pid).toBe(s.pid);
@@ -363,6 +372,37 @@ describe("sessions", () => {
 });
 
 describe("trials", () => {
+  it("rolls back the trial and block timestamps if the cursor write fails, then allows retry", async () => {
+    const s = await newSession("rollback-trial");
+    db.exec(`CREATE TRIGGER fail_trial_cursor BEFORE UPDATE OF cursor_position ON sessions
+      WHEN NEW.cursor_position = 2
+      BEGIN SELECT RAISE(ABORT, 'injected cursor failure'); END`);
+    const errorLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const failed = await request(app).post(`/api/sessions/${s.sessionId}/trials`).send(trialBody(s, 1, 1)).expect(500);
+      expect(failed.body).toEqual({ error: "internal" });
+      expect(errorLog).toHaveBeenCalledWith("Unhandled API request error");
+      expect(db.prepare("SELECT COUNT(*) AS n FROM trials WHERE session_id = ?").get(s.sessionId)).toEqual({ n: 0 });
+      expect(db.prepare("SELECT started_at, ended_at FROM blocks WHERE session_id = ? AND block_index = 1")
+        .get(s.sessionId)).toEqual({ started_at: null, ended_at: null });
+      expect((await request(app).get(`/api/sessions/${s.sessionId}`).expect(200)).body.cursor).toEqual(s.cursor);
+    } finally {
+      errorLog.mockRestore();
+      db.exec("DROP TRIGGER fail_trial_cursor");
+    }
+    await request(app).post(`/api/sessions/${s.sessionId}/trials`).send(trialBody(s, 1, 1)).expect(201);
+  });
+
+  it("serializes concurrent duplicate trial writes and saves one response", async () => {
+    const s = await newSession("concurrent-trial");
+    const responses = await Promise.all([1, 2].map(() =>
+      request(app).post(`/api/sessions/${s.sessionId}/trials`).send(trialBody(s, 1, 1))));
+    expect(responses.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(db.prepare("SELECT COUNT(*) AS n FROM trials WHERE session_id = ?").get(s.sessionId)).toEqual({ n: 1 });
+    expect((await request(app).get(`/api/sessions/${s.sessionId}`).expect(200)).body.cursor)
+      .toEqual({ blockIndex: 1, positionInBlock: 2, phase: "trial" });
+  });
+
   it("derives fields server-side and advances the cursor", async () => {
     await newSession();
     const s = await newSession();
@@ -384,7 +424,7 @@ describe("trials", () => {
   });
 
   it("timingFlag when decision time > 120 s; trialIndex for later blocks", async () => {
-    const s = legacySession();
+    const s = await legacySession();
     const r = await request(app).post(`/api/sessions/${s.sessionId}/trials`)
       .send(trialBody(s, 3, 4, { decisionTimeRawMs: 120_001 }));
     expect(r.status).toBe(201);
@@ -417,7 +457,7 @@ describe("trials", () => {
   });
 
   it("position 6 moves cursor to block_survey and sets ended_at", async () => {
-    const s = legacySession();
+    const s = await legacySession();
     for (let pos = 1; pos <= 5; pos++) await request(app).post(`/api/sessions/${s.sessionId}/trials`).send(trialBody(s, 1, pos));
     const r = await request(app).post(`/api/sessions/${s.sessionId}/trials`).send(trialBody(s, 1, 6));
     expect(r.body.cursor).toEqual({ blockIndex: 1, positionInBlock: 6, phase: "block_survey" });
@@ -450,7 +490,7 @@ describe("block surveys and exit", () => {
   it("defaults to text-only original counts and preserves saved media presentations on resume", async () => {
     const current = await newSession("text-presentation");
     expect(current.protocolVersion).toBe("calibrated-full-v1");
-    const media = createSession(db, assignShortFromBank(77, bank), {
+    const media = await createSession(db, assignShortFromBank(77, bank), {
       consequenceBanner: false, anxiety: false, postBankHash: "media-hash", appVersion: "0.4.0", protocolVersion: "calibrated-media-full-v1",
       participantHash: hashParticipantCode("test-salt", "saved-media"),
     });
@@ -483,11 +523,11 @@ describe("block surveys and exit", () => {
     { postsPerBlock: 6, protocol: "legacy-full-v1" },
   ])("completes and resumes $protocol with $postsPerBlock posts per block through HTTP", async ({ postsPerBlock, protocol }) => {
     const code = `protocol-${protocol}-${postsPerBlock}`;
-    const s = protocol === "legacy-full-v1" ? legacySession(code, postsPerBlock === 2)
-      : protocol === "calibrated-brief-v1" ? createSession(db, assignShortFromBank(77, bank), {
+    const s = protocol === "legacy-full-v1" ? await legacySession(code, postsPerBlock === 2)
+      : protocol === "calibrated-brief-v1" ? await createSession(db, assignShortFromBank(77, bank), {
         consequenceBanner: false, anxiety: false, postBankHash: "brief-bank", appVersion: "brief",
         protocolVersion: "calibrated-brief-v1", participantHash: hashParticipantCode("test-salt", code),
-      }) : protocol === "calibrated-media-full-v1" ? createSession(db, assignShortFromBank(77, bank), {
+      }) : protocol === "calibrated-media-full-v1" ? await createSession(db, assignShortFromBank(77, bank), {
         consequenceBanner: false, anxiety: false, postBankHash: "media-bank", appVersion: "0.4.0",
         protocolVersion: "calibrated-media-full-v1", participantHash: hashParticipantCode("test-salt", code),
       }) : await newSession(code);
@@ -557,11 +597,11 @@ describe("block surveys and exit", () => {
   });
 
   it("enforces the saved questionnaire protocol and validates brief ratings without saving rejected submissions", async () => {
-    const current = createSession(db, assignShortFromBank(78, bank), {
+    const current = await createSession(db, assignShortFromBank(78, bank), {
       consequenceBanner: false, anxiety: false, postBankHash: "brief-bank", appVersion: "brief",
       protocolVersion: "calibrated-brief-v1", participantHash: hashParticipantCode("test-salt", "brief-validation"),
     });
-    const legacy = legacySession("legacy-validation", true);
+    const legacy = await legacySession("legacy-validation", true);
     for (const s of [current, legacy]) await completeBlock(s, 1);
     const submit = (s: SessionView, body: object) =>
       request(app).post(`/api/sessions/${s.sessionId}/block-surveys`).send(body);
@@ -595,7 +635,7 @@ describe("block surveys and exit", () => {
   it("derives trial indices from preceding stored block lengths", async () => {
     const assignment = assignFromBank(78, bank);
     assignment.blocks[1].postOrder = assignment.blocks[1].postOrder.slice(0, 2);
-    const s = createSession(db, assignment, {
+    const s = await createSession(db, assignment, {
       consequenceBanner: false, anxiety: false, postBankHash: "test", appVersion: "test",
     });
     const r = await request(app).post(`/api/sessions/${s.sessionId}/trials`).send(trialBody(s, 3, 1));
@@ -604,7 +644,7 @@ describe("block surveys and exit", () => {
   });
 
   it("requires 6 trials, scores, counts detections, advances", async () => {
-    const s = legacySession();
+    const s = await legacySession();
     expect((await request(app).post(`/api/sessions/${s.sessionId}/block-surveys`).send(surveyBody(1))).status).toBe(400);
     // disagree with every wrong label -> both detected
     await completeBlock(s, 1, (id) => byId.get(id)!.isAiCorrect);
@@ -620,7 +660,7 @@ describe("block surveys and exit", () => {
   });
 
   it("validates survey fields", async () => {
-    const s = legacySession("full-validation", true);
+    const s = await legacySession("full-validation", true);
     await completeBlock(s, 1);
     const post = (b: object) => request(app).post(`/api/sessions/${s.sessionId}/block-surveys`).send({ ...surveyBody(1), ...b });
     expect((await post({ frustrationTlx: 33 })).status).toBe(400);
@@ -669,7 +709,7 @@ describe("participant cancellation", () => {
 
   it("does not change completed sessions and returns 404 for an unknown session", async () => {
     const s = await newSession();
-    setStatus(db, s.sessionId, "completed", new Date().toISOString());
+    await setStatus(db, s.sessionId, "completed", new Date().toISOString());
     await request(app).post(`/api/sessions/${s.sessionId}/cancel`).expect(409);
     expect(db.prepare("SELECT status FROM sessions WHERE session_id=?").get(s.sessionId)).toEqual({ status: "completed" });
     await request(app).post("/api/sessions/not-a-session/cancel").expect(404);

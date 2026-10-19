@@ -25,7 +25,7 @@ New sessions use `calibrated-full-v1`: **8 text-only posts, 4 parts of 2 posts**
 | Platform/language | Node.js 22+, TypeScript, HTML and CSS |
 | Frontend | React 18, React Router 6 and Vite: screens, navigation and builds |
 | Backend | Express 5 and tsx: HTTP API, validation and session transitions |
-| Persistence | SQLite via better-sqlite3: sessions, trials, surveys and events |
+| Persistence | SQLite via better-sqlite3 locally; remote Turso via @tursodatabase/serverless on Vercel |
 | Study logic | Scripted JSON bank, Williams orders and seeded randomization |
 | Verification | Vitest, Testing Library, jsdom and Supertest |
 | Analysis | Admin dashboard and CSV/JSON exports |
@@ -41,7 +41,7 @@ The application has moved from `HCI/app/` to `/Users/bibekgupta/Downloads/projec
 3. Run `npm ci --include=dev` using the included lockfile. Registry access is needed. If better-sqlite3 requires compilation, install Python and the platform C++ toolchain.
 4. Run `npm run dev` and keep the terminal open. This starts Express on port 3001 and Vite on port 5173.
 5. Open **http://localhost:5173/** for participants and **http://localhost:5173/admin** for admin. Vite proxies `/api` to port 3001. If Vite selects another port, use the URL it prints.
-6. Follow the interaction steps below. The server creates the SQLite schema automatically; no database service or manual SQL import is needed.
+6. Follow the interaction steps below. With neither Turso variable configured, the local server creates the SQLite schema automatically; no database service or manual SQL import is needed. Hosted Turso requires the explicit bootstrap described below.
 7. Stop development with Ctrl+C. For a single production server, run `npm run build`, then `npm start`; open **http://localhost:3001/** and `/admin`.
 
 ```bash
@@ -111,20 +111,32 @@ Open `/admin` on the same frontend origin. Admin monitors data, KPIs and exports
 
 New completed sessions contain eight trials; older plans can contain 24. Raw exports include unfinished/abandoned sessions and multiple protocols. Filter appropriately before analysis. The frustration measure is one NASA-TLX item, not the full weighted instrument.
 
+## Vercel deployment — frontend and backend together
+
+One Vercel project serves the Vite frontend and Express API on the same domain; browser requests use relative `/api` URLs. Hosted responses use **remote Turso through `@tursodatabase/serverless`**. Local development retains the better-sqlite3 fallback when neither Turso variable is configured. See [DEPLOYMENT.md](DEPLOYMENT.md) for schema bootstrap, environment variables and deployment verification.
+
+Set all four server variables in Vercel: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `ADMIN_TOKEN` and a stable `PARTICIPANT_SALT`. The database URL is `turso://trustableai-bibekgupta3333.aws-us-east-1.turso.io`. Enter the auth token directly in Vercel; keep it out of source, screenshots and shared messages.
+
+**Before the first deployment**, run the non-destructive schema bootstrap once from an operator environment with `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` set: `npm run db:setup` runs the Turso setup script and loads the local environment files. It initializes an empty database and checks existing schema compatibility without deleting participant records. Bootstrap needs those two Turso variables, not the admin token or participant salt. Setting Vercel variables alone does not run this command. Remote setup cannot be performed without credentials and is not claimed as completed here.
+
+Vercel requires remote persistence and all four variables; it must not fall back to a local SQLite file. Adding this configuration does not deploy the app or verify its cloud connection.
+
 ## Configuration, data and deployment
 
 | Variable | Default / purpose |
 |---|---|
 | `PORT` | 3001, Express port |
 | `HOST` | 127.0.0.1, local binding; use 0.0.0.0 only for deliberate network access |
-| `DB_PATH` | `data/study.db`, relative to the project root |
-| `ADMIN_TOKEN` | Optional for local loopback use; configure for every shared/proxy deployment |
-| `PARTICIPANT_SALT` | Stable HMAC secret; generated once in database metadata if unset |
+| `DB_PATH` | Local SQLite only: `data/study.db`, relative to the project root |
+| `TURSO_DATABASE_URL` | Remote Turso URL; required on Vercel |
+| `TURSO_AUTH_TOKEN` | Private Turso database token; required on Vercel |
+| `ADMIN_TOKEN` | Required on Vercel and every shared/proxy deployment; optional for local loopback use |
+| `PARTICIPANT_SALT` | Required stable HMAC secret on Vercel; local SQLite generates one in database metadata if unset |
 | `STALE_MINUTES` | 120; stale sweeping occurs during session creation |
 
-The app does not automatically load `.env` files. Set variables in the shell/host environment. Vite's proxy targets port 3001; changing backend `PORT` also requires updating the proxy. Remote participants need a reachable HTTPS URL; `localhost` on a phone refers to that phone. A local proxy can appear as loopback, so configure `ADMIN_TOKEN` rather than relying on network origin alone. Keep the participation salt stable across restarts.
+`npm run dev`, `npm start` and `npm run db:setup` load `.env` and then `.env.local` when present. Existing shell/host variables take precedence. With Turso credentials in either file, the backend uses Turso; local SQLite is used only when both Turso variables are absent. Restart the backend after editing environment files. Vite's proxy targets port 3001; changing backend `PORT` also requires updating the proxy. Remote participants need a reachable HTTPS URL; `localhost` on a phone refers to that phone. A local proxy can appear as loopback, so configure `ADMIN_TOKEN` rather than relying on network origin alone. Keep the participation salt stable across restarts.
 
-SQLite uses WAL and foreign keys. Successfully committed answers persist; unfinished input and unflushed events may need re-entry. For a recovery backup, stop the server before copying the database, or use a SQLite-aware backup. Copying only the main file while WAL writes are active is unsafe. Analysis exports omit identity linkage/salt and are not a restorable database backup. Preserve real study data separately from demos.
+Local SQLite uses WAL and foreign keys. Successfully committed answers persist; unfinished input and unflushed events may need re-entry. For a recovery backup, stop the server before copying the database, or use a SQLite-aware backup. Copying only the main file while WAL writes are active is unsafe. Analysis exports omit identity linkage/salt and are not a restorable database backup. For hosted recovery, use Turso backup/recovery facilities and verify restoration separately; a local SQLite file copy is not a backup of the remote database. Analysis exports are not a restorable Turso backup either. Preserve real study data separately from demos.
 
 ## Application screenshots
 

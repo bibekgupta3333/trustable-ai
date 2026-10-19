@@ -1,7 +1,7 @@
 // Participant-side helpers: a minimal hand-rolled validator, server-side derivations
 // (trial fields, block-survey scoring, cursor advance) and the non-session participant routes.
 import express from "express";
-import type Database from "better-sqlite3";
+import type { DatabaseInput } from "../db/async";
 import type {
   Condition, FactorKey, Likert7, Post, PostBank, Trial, TrustResponse, BlockSurvey, ExitSurvey,
 } from "../../shared/types";
@@ -331,7 +331,7 @@ export function exitWithTimestamp(s: ExitSurveySubmission, submittedAt: string):
 
 // ---------- non-session participant routes ----------
 export function participantRouter(deps: {
-  db: Database.Database; bank: PostBank; appVersion: string; postBankHash: string;
+  db: DatabaseInput; bank: PostBank; appVersion: string; postBankHash: string;
 }): express.Router {
   const { bank, appVersion, postBankHash } = deps;
   const router = express.Router();

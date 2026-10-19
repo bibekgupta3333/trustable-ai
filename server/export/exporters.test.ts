@@ -144,19 +144,19 @@ describe("exporters", () => {
   let db: Database.Database;
   let sessionId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = openDb(":memory:");
-    const s = createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "abc", appVersion: "0.1.0" });
+    const s = await createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "abc", appVersion: "0.1.0" });
     sessionId = s.sessionId;
   });
 
-  it("empty DB -> header-only CSVs and [] JSON", () => {
+  it("empty DB -> header-only CSVs and [] JSON", async () => {
     const fresh = openDb(":memory:");
-    expect(trialsCsv(fresh)).toBe(TRIAL_COLUMNS.join(",") + "\r\n");
-    expect(surveysCsv(fresh)).toBe(SURVEY_COLUMNS.join(",") + "\r\n");
-    expect(eventsCsv(fresh)).toBe(EVENT_COLUMNS.join(",") + "\r\n");
-    expect(exitCsv(fresh)).toBe(EXIT_COLUMNS.join(",") + "\r\n");
-    expect(JSON.parse(sessionsJson(fresh))).toEqual([]);
+    expect(await trialsCsv(fresh)).toBe(TRIAL_COLUMNS.join(",") + "\r\n");
+    expect(await surveysCsv(fresh)).toBe(SURVEY_COLUMNS.join(",") + "\r\n");
+    expect(await eventsCsv(fresh)).toBe(EVENT_COLUMNS.join(",") + "\r\n");
+    expect(await exitCsv(fresh)).toBe(EXIT_COLUMNS.join(",") + "\r\n");
+    expect(JSON.parse(await sessionsJson(fresh))).toEqual([]);
   });
 
   it("preserves existing columns and appends protocol metadata", () => {
@@ -170,14 +170,14 @@ describe("exporters", () => {
     expect(EXIT_COLUMNS).toHaveLength(11);
   });
 
-  it("trials.csv: one row per trial with session fields and CSV encodings", () => {
-    insertTrial(db, sessionId, trial());
-    insertTrial(db, sessionId, trial({
+  it("trials.csv: one row per trial with session fields and CSV encodings", async () => {
+    await insertTrial(db, sessionId, trial());
+    await insertTrial(db, sessionId, trial({
       trialId: "7-1-2", positionInBlock: 2, trialIndex: 2, postId: "p08", groundTruth: "TRUE", aiLabel: "accurate",
       isAiCorrect: true, errorType: null, difficulty: null, agreed: true, detectedError: null,
       explanationOpened: null, factorsExpanded: [], timeToFirstExpandMs: null,
     }));
-    const csv = trialsCsv(db);
+    const csv = await trialsCsv(db);
     expect(csv.split("\r\n")[0]).toBe(TRIAL_COLUMNS.join(","));
     const [a, b] = records(csv);
     expect(a).toMatchObject({
@@ -195,10 +195,10 @@ describe("exporters", () => {
     });
   });
 
-  it("surveys.csv: raw and scored trust columns, means, booleans", () => {
-    insertTrial(db, sessionId, trial());
-    insertBlockSurvey(db, sessionId, survey(1, "C"));
-    const [r] = records(surveysCsv(db));
+  it("surveys.csv: raw and scored trust columns, means, booleans", async () => {
+    await insertTrial(db, sessionId, trial());
+    await insertBlockSurvey(db, sessionId, survey(1, "C"));
+    const [r] = records(await surveysCsv(db));
     expect(r.pid).toBe("7");
     expect(r.sessionId).toBe(sessionId);
     expect(r.blockIndex).toBe("1");
@@ -216,12 +216,12 @@ describe("exporters", () => {
     });
   });
 
-  it("events.csv: ordered by seq, nulls empty, numbers as-is", () => {
-    insertEvents(db, sessionId, [
+  it("events.csv: ordered by seq, nulls empty, numbers as-is", async () => {
+    await insertEvents(db, sessionId, [
       event(2),
       event(1, { type: "session_start", trialId: null, blockIndex: null, condition: null, postId: null, factorKey: null, tMs: null }),
     ]);
-    const rows = records(eventsCsv(db));
+    const rows = records(await eventsCsv(db));
     expect(rows.map((r) => r.seq)).toEqual(["1", "2"]);
     expect(rows[0]).toMatchObject({ pid: "7", sessionId, type: "session_start", trialId: "", factorKey: "", tMs: "" });
     expect(rows[1]).toMatchObject({
@@ -230,9 +230,9 @@ describe("exporters", () => {
     });
   });
 
-  it("exit.csv: quoted comment round-trips, null gender empty", () => {
-    insertExitSurvey(db, sessionId, exit);
-    const csv = exitCsv(db);
+  it("exit.csv: quoted comment round-trips, null gender empty", async () => {
+    await insertExitSurvey(db, sessionId, exit);
+    const csv = await exitCsv(db);
     expect(csv).toContain('"Liked the ""Why?"" button, mostly\nthanks"');
     const [r] = records(csv);
     expect(r).toMatchObject({
@@ -241,11 +241,11 @@ describe("exporters", () => {
     });
   });
 
-  it("sessions.json: array of full sessions", () => {
-    insertTrial(db, sessionId, trial());
-    insertEvents(db, sessionId, [event(1)]);
-    insertExitSurvey(db, sessionId, exit);
-    const parsed = JSON.parse(sessionsJson(db));
+  it("sessions.json: array of full sessions", async () => {
+    await insertTrial(db, sessionId, trial());
+    await insertEvents(db, sessionId, [event(1)]);
+    await insertExitSurvey(db, sessionId, exit);
+    const parsed = JSON.parse(await sessionsJson(db));
     expect(Array.isArray(parsed)).toBe(true);
     expect(parsed).toHaveLength(1);
     const text = JSON.stringify(parsed[0]);
@@ -260,30 +260,30 @@ describe("participants.csv", () => {
   const HASH = "deadbeefcafef00d0123456789abcdef0123456789abcdef0123456789abcdef";
   const opts = { consequenceBanner: false, anxiety: false, postBankHash: "abc", appVersion: "0.1.0" };
 
-  function seedCompleted(db: Database.Database) {
-    const s = createSession(db, assignment, { ...opts, participantHash: HASH });
+  async function seedCompleted(db: Database.Database) {
+    const s = await createSession(db, assignment, { ...opts, participantHash: HASH });
     // block 1 (C): wrong miss detected, correct agreed, wrong false_alarm not detected
-    insertTrial(db, s.sessionId, trial({ decisionTimeMs: 1000, confidence: 6 }));
-    insertTrial(db, s.sessionId, trial({
+    await insertTrial(db, s.sessionId, trial({ decisionTimeMs: 1000, confidence: 6 }));
+    await insertTrial(db, s.sessionId, trial({
       trialId: "7-1-2", positionInBlock: 2, trialIndex: 2, postId: "p08", groundTruth: "TRUE", isAiCorrect: true,
       errorType: null, difficulty: null, agreed: true, detectedError: null, decisionTimeMs: 2000, confidence: 5,
       factSheetOpened: false,
     }));
-    insertTrial(db, s.sessionId, trial({
+    await insertTrial(db, s.sessionId, trial({
       trialId: "7-1-3", positionInBlock: 3, trialIndex: 3, postId: "p09", aiLabel: "misleading", groundTruth: "TRUE",
       errorType: "false_alarm", difficulty: "clear", agreed: true, detectedError: false, decisionTimeMs: 4000, confidence: 4,
       factSheetOpened: false,
     }));
-    insertBlockSurvey(db, s.sessionId, survey(1, "C"));
-    insertExitSurvey(db, s.sessionId, exit);
+    await insertBlockSurvey(db, s.sessionId, survey(1, "C"));
+    await insertExitSurvey(db, s.sessionId, exit);
     db.prepare("UPDATE sessions SET started_at = ? WHERE session_id = ?").run("2026-11-03T14:00:00.000Z", s.sessionId);
-    setStatus(db, s.sessionId, "completed", "2026-11-03T14:17:20.000Z");
+    await setStatus(db, s.sessionId, "completed", "2026-11-03T14:17:20.000Z");
     return s.sessionId;
   }
 
-  it("empty DB -> header only, in the contract column order", () => {
+  it("empty DB -> header only, in the contract column order", async () => {
     const fresh = openDb(":memory:");
-    expect(participantsCsv(fresh)).toBe(PARTICIPANT_COLUMNS.join(",") + "\r\n");
+    expect(await participantsCsv(fresh)).toBe(PARTICIPANT_COLUMNS.join(",") + "\r\n");
     expect(PARTICIPANT_COLUMNS.slice(0, 19)).toEqual([
       "pid", "sessionId", "isPilot", "status", "conditionOrder", "setRotation", "startedAt", "completedAt",
       "durationMin", "trialsSaved", "surveysSaved", "agreementRate", "wrongDetected", "falseAlarmDetected",
@@ -297,10 +297,10 @@ describe("participants.csv", () => {
     expect(PARTICIPANT_COLUMNS).toHaveLength(19 + 24 + 7 + 2 + 32);
   });
 
-  it("computes totals, rates (3 dp), duration (1 dp) and per-condition fields", () => {
+  it("computes totals, rates (3 dp), duration (1 dp) and per-condition fields", async () => {
     const db = openDb(":memory:");
-    const id = seedCompleted(db);
-    const csv = participantsCsv(db);
+    const id = await seedCompleted(db);
+    const csv = await participantsCsv(db);
     expect(csv.split("\r\n")[0]).toBe(PARTICIPANT_COLUMNS.join(","));
     const [r] = records(csv);
     expect(r).toMatchObject({
@@ -315,36 +315,36 @@ describe("participants.csv", () => {
     expect(r.trust_C).toBe(String(Math.round(survey(1, "C").trustMean! * 1000) / 1000));
   });
 
-  it("includes in-progress and pilot sessions, flags pilots, leaves duration empty when not completed", () => {
+  it("includes in-progress and pilot sessions, flags pilots, leaves duration empty when not completed", async () => {
     const db = openDb(":memory:");
-    createSession(db, { ...assignment, pid: 905, seed: 905 }, opts);
-    createSession(db, assignment, opts);
-    const rows = records(participantsCsv(db));
+    await createSession(db, { ...assignment, pid: 905, seed: 905 }, opts);
+    await createSession(db, assignment, opts);
+    const rows = records(await participantsCsv(db));
     expect(rows.map((r) => [r.pid, r.isPilot, r.status])).toEqual([["7", "FALSE", "in_progress"], ["905", "TRUE", "in_progress"]]);
     expect(rows[0]).toMatchObject({ durationMin: "", completedAt: "", agreementRate: "", detectionRate: "", trialsSaved: "0", wrongDetected: "0" });
   });
 
-  it("never contains the participant hash", () => {
+  it("never contains the participant hash", async () => {
     const db = openDb(":memory:");
-    seedCompleted(db);
+    await seedCompleted(db);
     expect(db.prepare("SELECT participant_hash AS h FROM sessions").get()).toEqual({ h: HASH });
-    expect(participantsCsv(db)).not.toContain(HASH);
-    expect(participantsCsv(db)).not.toMatch(/hash/i);
-    expect(kpisCsv(db)).not.toContain(HASH);
+    expect(await participantsCsv(db)).not.toContain(HASH);
+    expect(await participantsCsv(db)).not.toMatch(/hash/i);
+    expect(await kpisCsv(db)).not.toContain(HASH);
   });
 });
 
 describe("kpis.csv", () => {
   const now = new Date("2026-10-17T12:00:00.000Z");
 
-  it("rows match computeKpis in long form", () => {
+  it("rows match computeKpis in long form", async () => {
     const db = openDb(":memory:");
-    const s = createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "abc", appVersion: "0.1.0" });
-    insertTrial(db, s.sessionId, trial());
-    setStatus(db, s.sessionId, "completed", "2026-10-17T10:00:00.000Z");
-    const k = computeKpis(db, now);
-    const rows = records(kpisCsv(db, now, "all"));
-    expect(parseCsv(kpisCsv(db, now))[0]).toEqual(KPI_COLUMNS);
+    const s = await createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "abc", appVersion: "0.1.0" });
+    await insertTrial(db, s.sessionId, trial());
+    await setStatus(db, s.sessionId, "completed", "2026-10-17T10:00:00.000Z");
+    const k = await computeKpis(db, now);
+    const rows = records(await kpisCsv(db, now, "all"));
+    expect(parseCsv(await kpisCsv(db, now))[0]).toEqual(KPI_COLUMNS);
     expect(rows[0]).toEqual({ section: "meta", key: "all", metric: "generatedAt", value: now.toISOString() });
     const get = (section: string, key: string, metric: string) =>
       rows.find((r) => r.section === section && r.key === key && r.metric === metric)?.value;
@@ -367,8 +367,8 @@ describe("kpis.csv", () => {
     expect(rows).toHaveLength(expected);
   });
 
-  it("empty DB still lists every metric, with empty rates", () => {
-    const rows = records(kpisCsv(openDb(":memory:"), now));
+  it("empty DB still lists every metric, with empty rates", async () => {
+    const rows = records(await kpisCsv(openDb(":memory:"), now));
     expect(rows.find((r) => r.metric === "completionRate")?.value).toBe("");
     expect(rows.filter((r) => r.section === "daily")).toHaveLength(0);
     expect(rows.filter((r) => r.section === "balance")).toHaveLength(4);
@@ -376,32 +376,32 @@ describe("kpis.csv", () => {
 });
 
 describe("exportIndex", () => {
-  it("lists all 7 exports with descriptions and data row counts", () => {
+  it("lists all 7 exports with descriptions and data row counts", async () => {
     const db = openDb(":memory:");
-    const s = createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "abc", appVersion: "0.1.0" });
-    insertTrial(db, s.sessionId, trial());
-    insertEvents(db, s.sessionId, [event(1), event(2)]);
-    const idx = exportIndex(db);
+    const s = await createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "abc", appVersion: "0.1.0" });
+    await insertTrial(db, s.sessionId, trial());
+    await insertEvents(db, s.sessionId, [event(1), event(2)]);
+    const idx = await exportIndex(db);
     expect(idx.map((e) => e.name)).toEqual([
       "participants.csv", "trials.csv", "surveys.csv", "events.csv", "exit.csv", "kpis.csv", "sessions.json",
     ]);
     for (const e of idx) expect(e.description.length).toBeGreaterThan(10);
     const rows = Object.fromEntries(idx.map((e) => [e.name, e.rows]));
     expect(rows).toMatchObject({ "participants.csv": 1, "trials.csv": 1, "surveys.csv": 0, "events.csv": 2, "exit.csv": 0, "sessions.json": 1 });
-    expect(rows["kpis.csv"]).toBe(records(kpisCsv(db)).length);
-    expect(rows["trials.csv"]).toBe(records(trialsCsv(db)).length);
+    expect(rows["kpis.csv"]).toBe(records(await kpisCsv(db)).length);
+    expect(rows["trials.csv"]).toBe(records(await trialsCsv(db)).length);
   });
 });
 
 
 describe("study-version metadata", () => {
   const opts = { consequenceBanner: false, anxiety: false, postBankHash: "test", appVersion: "test" };
-  it("exports the planned length even for unfinished short and legacy sessions", () => {
+  it("exports the planned length even for unfinished short and legacy sessions", async () => {
     const db = openDb(":memory:");
-    createSession(db, assignment, opts);
+    await createSession(db, assignment, opts);
     const short: Assignment = { ...assignment, pid: 8, blocks: assignment.blocks.map(b => ({ ...b, postOrder: b.postOrder.slice(0, 2) })) as Assignment["blocks"] as Assignment["blocks"] };
-    createSession(db, short, opts);
-    const rows = records(participantsCsv(db));
+    await createSession(db, short, opts);
+    const rows = records(await participantsCsv(db));
     expect(rows.find(r => r.pid === "7")).toMatchObject({ plannedTrials: "24", studyVariant: "legacy-24", trialsSaved: "0" });
     expect(rows.find(r => r.pid === "8")).toMatchObject({ plannedTrials: "8", studyVariant: "short-8", trialsSaved: "0" });
     db.close();
@@ -409,22 +409,22 @@ describe("study-version metadata", () => {
 });
 
 describe("brief and legacy export isolation", () => {
-  it("exports both protocols, leaves full-scale scores blank for brief surveys, and defaults KPI CSV to current", () => {
+  it("exports both protocols, leaves full-scale scores blank for brief surveys, and defaults KPI CSV to current", async () => {
     const db = openDb(":memory:");
-    const legacy = createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "h", appVersion: "v" });
-    const current = createSession(db, { ...assignment, pid: 8, seed: 8, blocks: assignment.blocks.map((b) => ({ ...b, postOrder: b.postOrder.slice(0, 2) })) as Assignment["blocks"] }, {
+    const legacy = await createSession(db, assignment, { consequenceBanner: false, anxiety: false, postBankHash: "h", appVersion: "v" });
+    const current = await createSession(db, { ...assignment, pid: 8, seed: 8, blocks: assignment.blocks.map((b) => ({ ...b, postOrder: b.postOrder.slice(0, 2) })) as Assignment["blocks"] }, {
       consequenceBanner: false, anxiety: false, postBankHash: "h", appVersion: "v", protocolVersion: "calibrated-brief-v1",
     });
-    insertBlockSurvey(db, legacy.sessionId, survey(1, "C"));
-    insertBlockSurvey(db, current.sessionId, { ...survey(1, "C"), questionnaireVersion: "brief-v1", briefTrust: 6,
+    await insertBlockSurvey(db, legacy.sessionId, survey(1, "C"));
+    await insertBlockSurvey(db, current.sessionId, { ...survey(1, "C"), questionnaireVersion: "brief-v1", briefTrust: 6,
       trustResponses: [], trustMean: null, fairness1: null, fairness2: null, fairnessMean: null });
     for (const s of [legacy, current]) {
-      insertTrial(db, s.sessionId, trial());
-      insertTrial(db, s.sessionId, trial({ trialId: "7-1-2", positionInBlock: 2, trialIndex: 2,
+      await insertTrial(db, s.sessionId, trial());
+      await insertTrial(db, s.sessionId, trial({ trialId: "7-1-2", positionInBlock: 2, trialIndex: 2,
         isAiCorrect: true, agreed: true, detectedError: null, errorType: null, difficulty: null }));
-      setStatus(db, s.sessionId, "completed", "2026-10-17T12:00:00Z");
+      await setStatus(db, s.sessionId, "completed", "2026-10-17T12:00:00Z");
     }
-    const sv = records(surveysCsv(db));
+    const sv = records(await surveysCsv(db));
     expect(sv.find((r) => r.sessionId === current.sessionId)).toMatchObject({
       protocolVersion: "calibrated-brief-v1", questionnaireVersion: "brief-v1", briefTrust: "6",
       trustMean: "", fairness1: "", fairness2: "", fairnessMean: "", trust_01: "", trust_01_s: "",
@@ -432,23 +432,23 @@ describe("brief and legacy export isolation", () => {
     expect(sv.find((r) => r.sessionId === legacy.sessionId)).toMatchObject({
       protocolVersion: "legacy-full-v1", questionnaireVersion: "full-v1", briefTrust: "", trust_01: "1", trust_01_s: "7",
     });
-    const participants = records(participantsCsv(db));
+    const participants = records(await participantsCsv(db));
     expect(participants).toHaveLength(2);
     const brief = participants.find((r) => r.sessionId === current.sessionId)!;
     expect(brief).toMatchObject({ protocolVersion: "calibrated-brief-v1", questionnaireVersion: "brief-v1", briefTrust: "6",
       trust_C: "", fairness_C: "", briefTrust_C: "6", correctAcceptanceRate: "1", wrongRejectionRate: "1",
       appropriateRelianceRate: "1", overrelianceRate: "0", underrelianceRate: "0", appropriateRelianceRate_C: "1",
       correctAcceptanceRate_A: "", wrongRejectionRate_A: "", plannedTrials: "8", studyVariant: "short-8" });
-    const defaultRows = records(kpisCsv(db));
+    const defaultRows = records(await kpisCsv(db));
     expect(defaultRows.find((r) => r.metric === "protocolVersion")?.value).toBe("calibrated-full-v1");
     expect(defaultRows.find((r) => r.section === "summary" && r.metric === "completed")?.value).toBe("0");
-    const rows = records(kpisCsv(db, new Date(), "calibrated-brief-v1"));
+    const rows = records(await kpisCsv(db, new Date(), "calibrated-brief-v1"));
     expect(rows.find((r) => r.metric === "protocolVersion")?.value).toBe("calibrated-brief-v1");
     expect(rows.find((r) => r.section === "summary" && r.metric === "completed")?.value).toBe("1");
     expect(rows.find((r) => r.section === "primaryOutcome" && r.metric === "trials")?.value).toBe("2");
-    const raw = records(trialsCsv(db));
+    const raw = records(await trialsCsv(db));
     expect(new Set(raw.map((r) => r.protocolVersion))).toEqual(new Set(["legacy-full-v1", "calibrated-brief-v1"]));
-    expect(JSON.parse(sessionsJson(db)).map((s: { protocolVersion: string }) => s.protocolVersion)).toContain("calibrated-brief-v1");
+    expect(JSON.parse(await sessionsJson(db)).map((s: { protocolVersion: string }) => s.protocolVersion)).toContain("calibrated-brief-v1");
     db.close();
   });
 });

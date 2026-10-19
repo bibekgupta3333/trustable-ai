@@ -1,5 +1,5 @@
 // Data access for the study database. The snake_case <-> camelCase mapping lives here only.
-import type Database from "better-sqlite3";
+import { asAsyncDatabase, type DatabaseInput, type StudyStatement } from "./async";
 import { createHmac, randomBytes, randomUUID } from "node:crypto";
 import type {
   Assignment, BlockPlan, Cursor, SessionStatus, SessionView, AdminSessionRow, EventSubmission,
@@ -8,7 +8,7 @@ import type {
   BlockSurvey, Condition, ExitSurvey, FactorKey, Phase, Trial, TrustResponse, StudyProtocol,
 } from "../../shared/types";
 
-type DB = Database.Database;
+type DB = DatabaseInput;
 type Row = Record<string, any>;
 
 export class ConflictError extends Error {
@@ -19,13 +19,8 @@ export class ConflictError extends Error {
 }
 
 // ---------- helpers ----------
-const cache = new WeakMap<DB, Map<string, Database.Statement>>();
-function stmt(db: DB, sql: string): Database.Statement {
-  let m = cache.get(db);
-  if (!m) { m = new Map(); cache.set(db, m); }
-  let s = m.get(sql);
-  if (!s) { s = db.prepare(sql); m.set(sql, s); }
-  return s;
+function stmt(db: DB, sql: string): StudyStatement {
+  return asAsyncDatabase(db).prepare(sql);
 }
 
 const b = (v: boolean): number => (v ? 1 : 0);
@@ -35,11 +30,13 @@ const toBoolN = (v: unknown): boolean | null => (v === null || v === undefined ?
 const nowIso = (): string => new Date().toISOString();
 
 function isPkConflict(e: unknown): boolean {
-  const code = (e as { code?: string } | null)?.code;
-  return code === "SQLITE_CONSTRAINT_PRIMARYKEY" || code === "SQLITE_CONSTRAINT_UNIQUE";
+  const error = e as { code?: string; extendedCode?: string; rawCode?: number } | null;
+  const codes = [error?.code, error?.extendedCode];
+  return codes.some(code => code === "SQLITE_CONSTRAINT_PRIMARYKEY" || code === "SQLITE_CONSTRAINT_UNIQUE")
+    || error?.rawCode === 1555 || error?.rawCode === 2067;
 }
-function runOrConflict(fn: () => void, msg: string): void {
-  try { fn(); } catch (e) {
+async function runOrConflict(fn: () => Promise<unknown>, msg: string): Promise<void> {
+  try { (await fn()); } catch (e) {
     if (isPkConflict(e)) throw new ConflictError(msg);
     throw e;
   }
@@ -59,8 +56,8 @@ function blockFromRow(r: Row): BlockPlan {
   };
 }
 
-function sessionViewFromRow(db: DB, r: Row): SessionView {
-  const blocks = (stmt(db, "SELECT * FROM blocks WHERE session_id = ? ORDER BY block_index").all(r.session_id) as Row[])
+async function sessionViewFromRow(db: DB, r: Row): Promise<SessionView> {
+  const blocks = ((await stmt(db, "SELECT * FROM blocks WHERE session_id = ? ORDER BY block_index").all(r.session_id)) as Row[])
     .map(blockFromRow) as SessionView["blocks"];
   return {
     sessionId: r.session_id,
@@ -74,7 +71,7 @@ function sessionViewFromRow(db: DB, r: Row): SessionView {
     consequenceBanner: toBool(r.consequence_banner),
     anxiety: toBool(r.anxiety),
     resumeCount: r.resume_count,
-    nextEventSeq: ((stmt(db, "SELECT MAX(seq) AS m FROM events WHERE session_id = ?").get(r.session_id) as { m: number | null }).m ?? 0) + 1,
+    nextEventSeq: (((await stmt(db, "SELECT MAX(seq) AS m FROM events WHERE session_id = ?").get(r.session_id)) as { m: number | null }).m ?? 0) + 1,
     consentAt: r.consent_at ?? null,
     startedAt: r.started_at,
     completedAt: r.completed_at ?? null,
@@ -181,7 +178,7 @@ export interface CreateSessionOpts {
   participantHash?: string | null; // HMAC of the participation code; never the raw code
 }
 
-export function createSession(db: DB, a: Assignment, opts: CreateSessionOpts): SessionView {
+export async function createSession(db: DB, a: Assignment, opts: CreateSessionOpts): Promise<SessionView> {
   const sessionId = randomUUID();
   const now = nowIso();
   const insertSession = stmt(db, `INSERT INTO sessions
@@ -191,31 +188,31 @@ export function createSession(db: DB, a: Assignment, opts: CreateSessionOpts): S
     VALUES (?, ?, ?, ?, ?, 'in_progress', ?, ?, 1, 1, 'consent', 0, ?, ?, ?, ?, ?, ?)`);
   const insertBlock = stmt(db, `INSERT INTO blocks (session_id, block_index, condition, set_id, post_order)
     VALUES (?, ?, ?, ?, ?)`);
-  const tx = db.transaction(() => {
-    insertSession.run(
+  const tx = asAsyncDatabase(db).transaction(async () => {
+    (await insertSession.run(
       sessionId, a.pid, a.conditionOrder.join(""), a.setRotation, a.seed,
       b(opts.consequenceBanner), b(opts.anxiety), opts.postBankHash, opts.appVersion, now,
       opts.participantHash ?? null, now, opts.protocolVersion ?? "legacy-full-v1",
-    );
+    ));
     for (const blk of a.blocks) {
-      insertBlock.run(sessionId, blk.blockIndex, blk.condition, blk.set, JSON.stringify(blk.postOrder));
+      (await insertBlock.run(sessionId, blk.blockIndex, blk.condition, blk.set, JSON.stringify(blk.postOrder)));
     }
   });
-  runOrConflict(() => tx(), `session ${sessionId} already exists`);
-  return getSession(db, sessionId)!;
+  (await runOrConflict(async () => (await tx()), `session ${sessionId} already exists`));
+  return (await getSession(db, sessionId))!;
 }
 
-export function getSession(db: DB, sessionId: string): SessionView | null {
-  const r = stmt(db, "SELECT * FROM sessions WHERE session_id = ?").get(sessionId) as Row | undefined;
-  return r ? sessionViewFromRow(db, r) : null;
+export async function getSession(db: DB, sessionId: string): Promise<SessionView | null> {
+  const r = (await stmt(db, "SELECT * FROM sessions WHERE session_id = ?").get(sessionId)) as Row | undefined;
+  return r ? (await sessionViewFromRow(db, r)) : null;
 }
 
-export function listSessions(db: DB): AdminSessionRow[] {
-  const rows = stmt(db, `SELECT s.*,
+export async function listSessions(db: DB): Promise<AdminSessionRow[]> {
+  const rows = (await stmt(db, `SELECT s.*,
       (SELECT COUNT(*) FROM trials t WHERE t.session_id = s.session_id) AS trials_saved,
       (SELECT COALESCE(SUM(json_array_length(b.post_order)), 0) FROM blocks b WHERE b.session_id = s.session_id) AS planned_trials,
       (SELECT COUNT(*) FROM block_surveys bs WHERE bs.session_id = s.session_id) AS surveys_saved
-    FROM sessions s ORDER BY s.started_at DESC, s.pid DESC`).all() as Row[];
+    FROM sessions s ORDER BY s.started_at DESC, s.pid DESC`).all()) as Row[];
   return rows.map((r) => ({
     sessionId: r.session_id,
     pid: r.pid,
@@ -233,44 +230,44 @@ export function listSessions(db: DB): AdminSessionRow[] {
   }));
 }
 
-export function findInProgressByPid(db: DB, pid: number): SessionView | null {
-  const r = stmt(db, `SELECT * FROM sessions WHERE pid = ? AND status = 'in_progress'
-    ORDER BY started_at DESC LIMIT 1`).get(pid) as Row | undefined;
-  return r ? sessionViewFromRow(db, r) : null;
+export async function findInProgressByPid(db: DB, pid: number): Promise<SessionView | null> {
+  const r = (await stmt(db, `SELECT * FROM sessions WHERE pid = ? AND status = 'in_progress'
+    ORDER BY started_at DESC LIMIT 1`).get(pid)) as Row | undefined;
+  return r ? (await sessionViewFromRow(db, r)) : null;
 }
 
-export function recordConsent(db: DB, sessionId: string, at: string): void {
-  stmt(db, "UPDATE sessions SET consent_at = ? WHERE session_id = ?").run(at, sessionId);
+export async function recordConsent(db: DB, sessionId: string, at: string): Promise<void> {
+  (await stmt(db, "UPDATE sessions SET consent_at = ? WHERE session_id = ?").run(at, sessionId));
 }
 
-export function updateCursor(db: DB, sessionId: string, c: Cursor): void {
-  stmt(db, "UPDATE sessions SET cursor_block = ?, cursor_position = ?, cursor_phase = ? WHERE session_id = ?")
-    .run(c.blockIndex, c.positionInBlock, c.phase, sessionId);
+export async function updateCursor(db: DB, sessionId: string, c: Cursor): Promise<void> {
+  (await stmt(db, "UPDATE sessions SET cursor_block = ?, cursor_position = ?, cursor_phase = ? WHERE session_id = ?")
+    .run(c.blockIndex, c.positionInBlock, c.phase, sessionId));
 }
 
-export function incrementResume(db: DB, sessionId: string): void {
-  stmt(db, "UPDATE sessions SET resume_count = resume_count + 1 WHERE session_id = ?").run(sessionId);
+export async function incrementResume(db: DB, sessionId: string): Promise<void> {
+  (await stmt(db, "UPDATE sessions SET resume_count = resume_count + 1 WHERE session_id = ?").run(sessionId));
 }
 
-export function setStatus(db: DB, sessionId: string, status: SessionStatus, at?: string): void {
+export async function setStatus(db: DB, sessionId: string, status: SessionStatus, at?: string): Promise<void> {
   if (status === "completed") {
-    stmt(db, "UPDATE sessions SET status = ?, completed_at = ? WHERE session_id = ?").run(status, at ?? nowIso(), sessionId);
+    (await stmt(db, "UPDATE sessions SET status = ?, completed_at = ? WHERE session_id = ?").run(status, at ?? nowIso(), sessionId));
   } else {
-    stmt(db, "UPDATE sessions SET status = ? WHERE session_id = ?").run(status, sessionId);
+    (await stmt(db, "UPDATE sessions SET status = ? WHERE session_id = ?").run(status, sessionId));
   }
 }
 
 /** Sets last_activity_at = now. Call on every participant write (consent, trial, events, cursor, surveys, exit, resume). */
-export function touchActivity(db: DB, sessionId: string, at: string = nowIso()): void {
-  stmt(db, "UPDATE sessions SET last_activity_at = ? WHERE session_id = ?").run(at, sessionId);
+export async function touchActivity(db: DB, sessionId: string, at: string = nowIso()): Promise<void> {
+  (await stmt(db, "UPDATE sessions SET last_activity_at = ? WHERE session_id = ?").run(at, sessionId));
 }
 
 // ---------- participation code (once-only) ----------
 /** Salt for participant hashes: env PARTICIPANT_SALT if given, else 32 random bytes generated once into meta.participant_salt. */
-export function participantSalt(db: DB, envSalt?: string): string {
+export async function participantSalt(db: DB, envSalt?: string): Promise<string> {
   if (envSalt) return envSalt;
-  stmt(db, "INSERT OR IGNORE INTO meta (key, value) VALUES ('participant_salt', ?)").run(randomBytes(32).toString("hex"));
-  return (stmt(db, "SELECT value FROM meta WHERE key = 'participant_salt'").get() as { value: string }).value;
+  (await stmt(db, "INSERT OR IGNORE INTO meta (key, value) VALUES ('participant_salt', ?)").run(randomBytes(32).toString("hex")));
+  return ((await stmt(db, "SELECT value FROM meta WHERE key = 'participant_salt'").get()) as { value: string }).value;
 }
 
 /** hex HMAC-SHA256(salt, normalisedCode). The caller normalises (trim + lowercase). */
@@ -281,16 +278,16 @@ export function hashParticipantCode(salt: string, normalisedCode: string): strin
 export const PILOT_PID_MIN = 900; // pids >= 900 are pilot/manual and never auto-assigned
 
 /** Marks in_progress sessions whose last activity is older than staleMinutes as abandoned. Returns rows changed. */
-export function abandonStaleSessions(db: DB, staleMinutes: number, now: Date = new Date()): number {
+export async function abandonStaleSessions(db: DB, staleMinutes: number, now: Date = new Date()): Promise<number> {
   const cutoff = new Date(now.getTime() - staleMinutes * 60_000).toISOString();
-  return stmt(db, `UPDATE sessions SET status = 'abandoned'
-    WHERE status = 'in_progress' AND COALESCE(last_activity_at, started_at) < ?`).run(cutoff).changes;
+  return (await stmt(db, `UPDATE sessions SET status = 'abandoned'
+    WHERE status = 'in_progress' AND COALESCE(last_activity_at, started_at) < ?`).run(cutoff)).changes;
 }
 
 /** Lowest pid >= 1 with no in_progress or completed session (abandoned pids are reused); null if 1-899 are all taken. */
-export function nextFreePid(db: DB): number | null {
-  const used = new Set((stmt(db, `SELECT DISTINCT pid FROM sessions
-    WHERE status IN ('in_progress','completed') AND pid < ?`).all(PILOT_PID_MIN) as { pid: number }[]).map((r) => r.pid));
+export async function nextFreePid(db: DB): Promise<number | null> {
+  const used = new Set(((await stmt(db, `SELECT DISTINCT pid FROM sessions
+    WHERE status IN ('in_progress','completed') AND pid < ?`).all(PILOT_PID_MIN)) as { pid: number }[]).map((r) => r.pid));
   for (let pid = 1; pid < PILOT_PID_MIN; pid++) if (!used.has(pid)) return pid;
   return null;
 }
@@ -305,7 +302,7 @@ export type StartResult =
  * Self-start in one BEGIN IMMEDIATE transaction: sweep stale sessions, then resume / refuse by participant hash,
  * else allocate the lowest free pid and create the session from assign(pid).
  */
-export function startOrResumeSession(
+export async function startOrResumeSession(
   db: DB,
   args: {
     participantHash: string;
@@ -314,34 +311,34 @@ export function startOrResumeSession(
     opts: Omit<CreateSessionOpts, "participantHash">;
     now?: Date;
   },
-): StartResult {
-  const tx = db.transaction((): StartResult => {
+): Promise<StartResult> {
+  const tx = asAsyncDatabase(db).transaction(async (): Promise<StartResult> => {
     const now = args.now ?? new Date();
-    abandonStaleSessions(db, args.staleMinutes, now);
-    const prior = stmt(db, "SELECT session_id, status FROM sessions WHERE participant_hash = ?")
-      .get(args.participantHash) as Row | undefined;
+    (await abandonStaleSessions(db, args.staleMinutes, now));
+    const prior = (await stmt(db, "SELECT session_id, status FROM sessions WHERE participant_hash = ?")
+      .get(args.participantHash)) as Row | undefined;
     if (prior) {
       if (prior.status !== "in_progress") return { kind: "already_participated" };
-      stmt(db, "UPDATE sessions SET resume_count = resume_count + 1, last_activity_at = ? WHERE session_id = ?")
-        .run(now.toISOString(), prior.session_id);
-      return { kind: "resumed", session: getSession(db, prior.session_id)! };
+      (await stmt(db, "UPDATE sessions SET resume_count = resume_count + 1, last_activity_at = ? WHERE session_id = ?")
+        .run(now.toISOString(), prior.session_id));
+      return { kind: "resumed", session: (await getSession(db, prior.session_id))! };
     }
-    const pid = nextFreePid(db);
+    const pid = (await nextFreePid(db));
     if (pid === null) return { kind: "full" };
-    const session = createSession(db, args.assign(pid), { ...args.opts, participantHash: args.participantHash });
+    const session = (await createSession(db, args.assign(pid), { ...args.opts, participantHash: args.participantHash }));
     return { kind: "new", session };
   });
-  return tx.immediate();
+  return (await tx.immediate());
 }
 
-export function deleteSession(db: DB, sessionId: string): void {
+export async function deleteSession(db: DB, sessionId: string): Promise<void> {
   // Child rows go via ON DELETE CASCADE (foreign_keys = ON in openDb).
-  stmt(db, "DELETE FROM sessions WHERE session_id = ?").run(sessionId);
+  (await stmt(db, "DELETE FROM sessions WHERE session_id = ?").run(sessionId));
 }
 
 // ---------- trials ----------
-export function insertTrial(db: DB, sessionId: string, t: Trial): void {
-  const s = stmt(db, "SELECT pid FROM sessions WHERE session_id = ?").get(sessionId) as Row | undefined;
+export async function insertTrial(db: DB, sessionId: string, t: Trial): Promise<void> {
+  const s = (await stmt(db, "SELECT pid FROM sessions WHERE session_id = ?").get(sessionId)) as Row | undefined;
   if (!s) throw new Error(`unknown session ${sessionId}`);
   const ins = stmt(db, `INSERT INTO trials (
       trial_id, session_id, pid, block_index, position_in_block, trial_index, post_id, condition, set_id, topic,
@@ -350,66 +347,71 @@ export function insertTrial(db: DB, sessionId: string, t: Trial): void {
       timing_flag, fact_sheet_opened, fact_sheet_open_ms, explanation_opened, factors_expanded,
       time_to_first_expand_ms, resumed, saved_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  runOrConflict(() => {
-    ins.run(
+  (await runOrConflict(async () => {
+    (await ins.run(
       t.trialId, sessionId, s.pid, t.blockIndex, t.positionInBlock, t.trialIndex, t.postId, t.condition, t.set, t.topic,
       t.aiLabel, t.groundTruth, b(t.isAiCorrect), t.errorType, t.difficulty, b(t.agreed), bn(t.detectedError), t.confidence,
       t.labelShownAt, t.respondedAt, t.decisionTimeRawMs, t.hiddenMs, t.hiddenCount, t.blurCount, t.decisionTimeMs,
       b(t.timingFlag), b(t.factSheetOpened), t.factSheetOpenMs, bn(t.explanationOpened), t.factorsExpanded.join("|"),
       t.timeToFirstExpandMs, b(t.resumed), nowIso(),
-    );
-  }, `trial ${t.blockIndex}-${t.positionInBlock} already saved`);
+    ));
+  }, `trial ${t.blockIndex}-${t.positionInBlock} already saved`));
 }
 
-export function getTrials(db: DB, sessionId: string): Trial[] {
-  return (stmt(db, "SELECT * FROM trials WHERE session_id = ? ORDER BY block_index, position_in_block")
-    .all(sessionId) as Row[]).map(trialFromRow);
+export async function getTrials(db: DB, sessionId: string): Promise<Trial[]> {
+  return ((await stmt(db, "SELECT * FROM trials WHERE session_id = ? ORDER BY block_index, position_in_block")
+    .all(sessionId)) as Row[]).map(trialFromRow);
 }
 
 // ---------- events ----------
-export function insertEvents(db: DB, sessionId: string, evs: EventSubmission[]): number {
-  const ins = stmt(db, `INSERT OR IGNORE INTO events
-    (session_id, seq, trial_id, block_index, condition, post_id, type, factor_key, t_ms, perf_now, wall_clock)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  const tx = db.transaction((list: EventSubmission[]) => {
-    let n = 0;
-    for (const e of list) {
-      n += ins.run(
+export async function insertEvents(db: DB, sessionId: string, evs: EventSubmission[]): Promise<number> {
+  if (!evs.length) return 0;
+  // Bound network round trips while staying below SQLite's legacy 999-bind limit.
+  // All chunks share the transaction: a later failure rolls back earlier chunks.
+  const tx = asAsyncDatabase(db).transaction(async () => {
+    let inserted = 0;
+    for (let offset = 0; offset < evs.length; offset += 50) {
+      const chunk = evs.slice(offset, offset + 50);
+      const values = chunk.map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").join(", ");
+      const params = chunk.flatMap(e => [
         sessionId, e.seq, e.trialId ?? null, e.blockIndex ?? null, e.condition ?? null, e.postId ?? null,
         e.type, e.factorKey ?? null, e.tMs ?? null, e.perfNow, e.wallClock,
-      ).changes;
+      ]);
+      inserted += (await stmt(db, `INSERT OR IGNORE INTO events
+        (session_id, seq, trial_id, block_index, condition, post_id, type, factor_key, t_ms, perf_now, wall_clock)
+        VALUES ${values}`).run(...params)).changes;
     }
-    return n;
+    return inserted;
   });
-  return tx(evs);
+  return tx();
 }
 
 // ---------- surveys ----------
-export function insertBlockSurvey(db: DB, sessionId: string, s: BlockSurvey): void {
+export async function insertBlockSurvey(db: DB, sessionId: string, s: BlockSurvey): Promise<void> {
   const ins = stmt(db, `INSERT INTO block_surveys
     (session_id, block_index, condition, trust_raw, trust_scored, trust_mean, fairness1, fairness2, fairness_mean,
      tension, frustration_tlx, frustration_tlx_touched, n_wrong_detected, anxiety, submitted_at, questionnaire_version, brief_trust)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  runOrConflict(() => {
-    ins.run(
+  (await runOrConflict(async () => {
+    (await ins.run(
       sessionId, s.blockIndex, s.condition,
       JSON.stringify(s.trustResponses.map((r) => r.raw)),
       JSON.stringify(s.trustResponses.map((r) => r.scored)),
       s.trustMean, s.fairness1, s.fairness2, s.fairnessMean, s.tension, s.frustrationTlx,
       b(s.frustrationTlxTouched), s.nWrongDetected, s.anxiety == null ? null : JSON.stringify(s.anxiety), s.submittedAt,
       s.questionnaireVersion ?? "full-v1", s.briefTrust ?? null,
-    );
-  }, `block survey ${s.blockIndex} already saved`);
+    ));
+  }, `block survey ${s.blockIndex} already saved`));
 }
 
-export function insertExitSurvey(db: DB, sessionId: string, s: ExitSurvey): void {
+export async function insertExitSurvey(db: DB, sessionId: string, s: ExitSurvey): Promise<void> {
   const ins = stmt(db, `INSERT INTO exit_surveys
     (session_id, age_range, gender, education, social_media_use, label_exposure, preferred_condition, comment, submitted_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-  runOrConflict(() => {
-    ins.run(sessionId, s.ageRange, s.gender, s.education, s.socialMediaUse, s.labelExposure,
-      s.preferredCondition, s.comment ?? "", s.submittedAt);
-  }, "exit survey already saved");
+  (await runOrConflict(async () => {
+    (await ins.run(sessionId, s.ageRange, s.gender, s.education, s.socialMediaUse, s.labelExposure,
+      s.preferredCondition, s.comment ?? "", s.submittedAt));
+  }, "exit survey already saved"));
 }
 
 // ---------- export rows ----------
@@ -424,17 +426,17 @@ function sessionCols(r: Row) {
   };
 }
 
-export function allTrialRows(db: DB): Record<string, unknown>[] {
-  const rows = stmt(db, `SELECT t.*, s.condition_order, s.set_rotation, s.status, s.protocol_version
+export async function allTrialRows(db: DB): Promise<Record<string, unknown>[]> {
+  const rows = (await stmt(db, `SELECT t.*, s.condition_order, s.set_rotation, s.status, s.protocol_version
     FROM trials t JOIN sessions s ON s.session_id = t.session_id
-    ORDER BY t.pid, s.started_at, t.session_id, t.block_index, t.position_in_block`).all() as Row[];
+    ORDER BY t.pid, s.started_at, t.session_id, t.block_index, t.position_in_block`).all()) as Row[];
   return rows.map((r) => ({ ...sessionCols(r), ...trialFromRow(r) }));
 }
 
-export function allSurveyRows(db: DB): Record<string, unknown>[] {
-  const rows = stmt(db, `SELECT bs.*, s.pid, s.condition_order, s.set_rotation, s.status, s.protocol_version
+export async function allSurveyRows(db: DB): Promise<Record<string, unknown>[]> {
+  const rows = (await stmt(db, `SELECT bs.*, s.pid, s.condition_order, s.set_rotation, s.status, s.protocol_version
     FROM block_surveys bs JOIN sessions s ON s.session_id = bs.session_id
-    ORDER BY s.pid, s.started_at, bs.session_id, bs.block_index`).all() as Row[];
+    ORDER BY s.pid, s.started_at, bs.session_id, bs.block_index`).all()) as Row[];
   return rows.map((r) => {
     const raw: number[] = JSON.parse(r.trust_raw);
     const scored: number[] = JSON.parse(r.trust_scored);
@@ -463,28 +465,28 @@ export function allSurveyRows(db: DB): Record<string, unknown>[] {
   });
 }
 
-export function allEventRows(db: DB): Record<string, unknown>[] {
-  const rows = stmt(db, `SELECT e.*, s.pid, s.condition_order, s.set_rotation, s.status, s.protocol_version
+export async function allEventRows(db: DB): Promise<Record<string, unknown>[]> {
+  const rows = (await stmt(db, `SELECT e.*, s.pid, s.condition_order, s.set_rotation, s.status, s.protocol_version
     FROM events e JOIN sessions s ON s.session_id = e.session_id
-    ORDER BY s.pid, s.started_at, e.session_id, e.seq`).all() as Row[];
+    ORDER BY s.pid, s.started_at, e.session_id, e.seq`).all()) as Row[];
   return rows.map((r) => ({ ...sessionCols(r), ...eventFromRow(r) }));
 }
 
-export function allExitRows(db: DB): Record<string, unknown>[] {
-  const rows = stmt(db, `SELECT x.*, s.pid, s.condition_order, s.set_rotation, s.status, s.protocol_version
+export async function allExitRows(db: DB): Promise<Record<string, unknown>[]> {
+  const rows = (await stmt(db, `SELECT x.*, s.pid, s.condition_order, s.set_rotation, s.status, s.protocol_version
     FROM exit_surveys x JOIN sessions s ON s.session_id = x.session_id
-    ORDER BY s.pid, s.started_at, x.session_id`).all() as Row[];
+    ORDER BY s.pid, s.started_at, x.session_id`).all()) as Row[];
   return rows.map((r) => ({ ...sessionCols(r), ...exitFromRow(r) }));
 }
 
-export function allSessionsFull(db: DB): unknown[] {
-  const sessions = stmt(db, "SELECT * FROM sessions ORDER BY pid, started_at, session_id").all() as Row[];
-  return sessions.map((s) => {
+export async function allSessionsFull(db: DB): Promise<unknown[]> {
+  const sessions = (await stmt(db, "SELECT * FROM sessions ORDER BY pid, started_at, session_id").all()) as Row[];
+  return (await Promise.all(sessions.map(async (s) => {
     const id = s.session_id;
-    const trials = getTrials(db, id);
-    const surveys = (stmt(db, "SELECT * FROM block_surveys WHERE session_id = ? ORDER BY block_index").all(id) as Row[])
+    const trials = (await getTrials(db, id));
+    const surveys = ((await stmt(db, "SELECT * FROM block_surveys WHERE session_id = ? ORDER BY block_index").all(id)) as Row[])
       .map((r) => surveyFromRow(r));
-    const blocks = (stmt(db, "SELECT * FROM blocks WHERE session_id = ? ORDER BY block_index").all(id) as Row[])
+    const blocks = ((await stmt(db, "SELECT * FROM blocks WHERE session_id = ? ORDER BY block_index").all(id)) as Row[])
       .map((r) => ({
         ...blockFromRow(r),
         startedAt: r.started_at ?? null,
@@ -492,8 +494,8 @@ export function allSessionsFull(db: DB): unknown[] {
         trials: trials.filter((t) => t.blockIndex === r.block_index),
         survey: surveys.find((sv) => sv.blockIndex === r.block_index) ?? null,
       }));
-    const exit = stmt(db, "SELECT * FROM exit_surveys WHERE session_id = ?").get(id) as Row | undefined;
-    const events = (stmt(db, "SELECT * FROM events WHERE session_id = ? ORDER BY seq").all(id) as Row[]).map(eventFromRow);
+    const exit = (await stmt(db, "SELECT * FROM exit_surveys WHERE session_id = ?").get(id)) as Row | undefined;
+    const events = ((await stmt(db, "SELECT * FROM events WHERE session_id = ? ORDER BY seq").all(id)) as Row[]).map(eventFromRow);
     return {
       schemaVersion: 1,
       sessionId: id,
@@ -516,5 +518,5 @@ export function allSessionsFull(db: DB): unknown[] {
       events,
       exitSurvey: exit ? exitFromRow(exit) : null,
     };
-  });
+  })));
 }

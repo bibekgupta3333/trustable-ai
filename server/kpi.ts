@@ -1,7 +1,7 @@
 // KPI computation for GET /api/admin/kpis (CONTRACT-v2 §B). Pure SQL + TypeScript over the study DB.
 // Rules: pilot pids >= 900 are excluded everywhere; condition / error-type KPIs use completed sessions only;
 // rates are 0–1 numbers, or null when the denominator is 0.
-import type Database from "better-sqlite3";
+import { asAsyncDatabase, type DatabaseInput } from "./db/async";
 import type { Condition, StudyProtocol } from "../shared/types";
 import { WILLIAMS } from "../shared/counterbalance";
 
@@ -79,12 +79,13 @@ export function relianceSummary(rows: readonly { is_ai_correct: number; agreed: 
   };
 }
 
-export function computeKpis(db: Database.Database, now: Date = new Date(), protocolVersion: StudyProtocol | "all" = "all"): Kpis {
+export async function computeKpis(input: DatabaseInput, now: Date = new Date(), protocolVersion: StudyProtocol | "all" = "all"): Promise<Kpis> {
+  const db = asAsyncDatabase(input);
   const cohortFilter = "(? = 'all' OR protocol_version = ?)";
   const cohortArgs = [protocolVersion, protocolVersion];
   const completedSessions = `SELECT session_id FROM sessions WHERE status = 'completed' AND pid < ${PILOT_PID_MIN} AND ${cohortFilter}`;
   // ---- sessions
-  const counts = db
+  const counts = await db
     .prepare(`SELECT status, COUNT(*) AS n FROM sessions WHERE pid < ? AND ${cohortFilter} GROUP BY status`)
     .all(PILOT_PID_MIN, ...cohortArgs) as { status: string; n: number }[];
   const byStatus = (s: string) => counts.find((c) => c.status === s)?.n ?? 0;
@@ -94,7 +95,7 @@ export function computeKpis(db: Database.Database, now: Date = new Date(), proto
   const started = inProgress + completed + abandoned;
 
   // ---- target / cycles (distinct pids, so a re-run pid is not double counted)
-  const cyc = db
+  const cyc = await db
     .prepare(
       `SELECT COUNT(DISTINCT CASE WHEN pid BETWEEN 1 AND 16 THEN pid END) AS c1,
               COUNT(DISTINCT CASE WHEN pid BETWEEN 17 AND 32 THEN pid END) AS c2
@@ -103,7 +104,7 @@ export function computeKpis(db: Database.Database, now: Date = new Date(), proto
     .get(PILOT_PID_MIN, ...cohortArgs) as { c1: number; c2: number };
 
   // ---- durations (completed only)
-  const times = db
+  const times = await db
     .prepare(`SELECT started_at, completed_at FROM sessions WHERE status = 'completed' AND pid < ? AND ${cohortFilter} AND completed_at IS NOT NULL`)
     .all(PILOT_PID_MIN, ...cohortArgs) as { started_at: string; completed_at: string }[];
   const durations = times
@@ -111,13 +112,13 @@ export function computeKpis(db: Database.Database, now: Date = new Date(), proto
     .filter((d) => Number.isFinite(d) && d >= 0);
 
   // ---- per condition (completed sessions only)
-  const trials = db
+  const trials = await db
     .prepare(
       `SELECT condition, is_ai_correct, error_type, agreed, detected_error, confidence, decision_time_ms, fact_sheet_opened
          FROM trials WHERE session_id IN (${completedSessions})`,
     )
     .all(...cohortArgs) as TrialRow[];
-  const surveys = db
+  const surveys = await db
     .prepare(
       `SELECT condition, trust_mean, fairness_mean, brief_trust, tension, frustration_tlx
          FROM block_surveys WHERE session_id IN (${completedSessions})`,
@@ -159,7 +160,7 @@ export function computeKpis(db: Database.Database, now: Date = new Date(), proto
   });
 
   // ---- balance: always the four Williams orders, plus any unexpected order present in the data
-  const orderRows = db
+  const orderRows = await db
     .prepare(`SELECT condition_order AS o, COUNT(*) AS n FROM sessions WHERE status = 'completed' AND pid < ? AND ${cohortFilter} GROUP BY condition_order`)
     .all(PILOT_PID_MIN, ...cohortArgs) as { o: string; n: number }[];
   const orders: string[] = [...WILLIAMS];
@@ -171,7 +172,7 @@ export function computeKpis(db: Database.Database, now: Date = new Date(), proto
 
   // ---- completed per day (UTC date of completed_at)
   const dailyCompleted = (
-    db
+    await db
       .prepare(
         `SELECT substr(completed_at, 1, 10) AS date, COUNT(*) AS n FROM sessions
           WHERE status = 'completed' AND pid < ? AND ${cohortFilter} AND completed_at IS NOT NULL

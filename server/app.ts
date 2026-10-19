@@ -1,6 +1,6 @@
 import express from "express";
 import type { ErrorRequestHandler } from "express";
-import type Database from "better-sqlite3";
+import { asAsyncDatabase, type DatabaseInput } from "./db/async";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { PostBank } from "../shared/types";
@@ -11,7 +11,7 @@ import { HttpError, ValidationError, participantRouter } from "./routes/particip
 import { sessionsRouter } from "./routes/sessions";
 
 export interface AppDeps {
-  db: Database.Database;
+  db: DatabaseInput;
   bank: PostBank;
   appVersion: string;
   adminToken?: string;
@@ -22,10 +22,11 @@ export interface AppDeps {
 
 export const DEFAULT_STALE_MINUTES = 120;
 
-export function createApp(deps: AppDeps): express.Express {
-  const { db, bank, appVersion, adminToken, staticDir } = deps;
+export async function createApp(deps: AppDeps): Promise<express.Express> {
+  const { bank, appVersion, adminToken, staticDir } = deps;
+  const db = asAsyncDatabase(deps.db);
   const hash = postBankHash(bank);
-  const salt = resolveParticipantSalt(db, deps.participantSalt);
+  const salt = await resolveParticipantSalt(db, deps.participantSalt);
   const staleMinutes = deps.staleMinutes ?? DEFAULT_STALE_MINUTES;
   const app = express();
   app.disable("x-powered-by");
@@ -62,8 +63,10 @@ export function createApp(deps: AppDeps): express.Express {
     if (e?.type === "entity.parse.failed" || e?.status === 400)
       return void res.status(400).json({ error: "validation", detail: "malformed request body" });
     if (e?.type === "entity.too.large") return void res.status(413).json({ error: "too_large" });
-    console.error(err);
-    res.status(500).json({ error: "internal", detail: e?.message });
+    // Database errors may contain SQL, bound participation codes or connection strings.
+    // Keep the public response and fallback log independent of the exception contents.
+    console.error("Unhandled API request error");
+    res.status(500).json({ error: "internal" });
   };
   app.use(onError);
 
