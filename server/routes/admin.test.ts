@@ -3,7 +3,7 @@ import express from "express";
 import request from "supertest";
 import type Database from "better-sqlite3";
 import { openDb } from "../db/db";
-import { createSession, getSession, setStatus } from "../db/repo";
+import { createSession, getSession, setStatus, insertTrial, insertEvents, insertBlockSurvey, insertExitSurvey } from "../db/repo.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { adminRouter, adminAccess, exportFilename, isLoopback } from "./admin";
@@ -290,5 +290,197 @@ describe("GET /export (index)", () => {
 describe("exportFilename", () => {
   it("prefixes the ISO date", () => {
     expect(exportFilename("trials.csv", new Date("2026-10-17T12:00:00Z"))).toBe("2026-10-17-xai-study-trials.csv");
+  });
+});
+
+// All fixtures below are synthetic and use the suite's fresh :memory: database.
+const DOWNLOADS = ["participants.csv", "trials.csv", "surveys.csv", "events.csv", "exit.csv", "kpis.csv", "sessions.json"] as const;
+const ADMIN_OPERATIONS = [
+  ["get", "/sessions", 200],
+  ["get", "/kpis", 200],
+  ["get", "/assignments/1", 200],
+  ["get", "/export", 200],
+  ...DOWNLOADS.map((name) => ["get", `/export/${name}`, 200] as const),
+  ["post", "/sessions/:id/abandon", 204],
+  ["delete", "/sessions/:id", 204],
+] as const;
+const CHILD_TABLES = ["blocks", "trials", "events", "block_surveys", "exit_surveys"] as const;
+
+function responseRows(id: string) {
+  return Object.fromEntries(CHILD_TABLES.map((table) => [table,
+    db.prepare(`SELECT * FROM ${table} WHERE session_id = ? ORDER BY rowid`).all(id),
+  ]));
+}
+
+async function seedResponses(pid: number, participantHash?: string) {
+  const s = await createSession(db, assignment(pid), { ...OPTS, participantHash, protocolVersion: "calibrated-full-v1" });
+  const now = "2026-10-19T12:00:00.000Z";
+  await insertTrial(db, s.sessionId, {
+    trialId: `${pid}-1-1`, blockIndex: 1, positionInBlock: 1, trialIndex: 1, postId: "s1-p1",
+    condition: "A", set: "S1", topic: "env", aiLabel: "accurate", groundTruth: "TRUE",
+    isAiCorrect: true, errorType: null, difficulty: null, agreed: true, detectedError: null,
+    confidence: 5, labelShownAt: now, respondedAt: now, decisionTimeRawMs: 1000,
+    hiddenMs: 0, hiddenCount: 0, blurCount: 0, decisionTimeMs: 1000, timingFlag: false,
+    factSheetOpened: false, factSheetOpenMs: 0, explanationOpened: null, factorsExpanded: [],
+    timeToFirstExpandMs: null, resumed: false,
+  });
+  await insertEvents(db, s.sessionId, [{
+    seq: 1, type: "session_start", trialId: null, blockIndex: null, condition: null,
+    postId: null, factorKey: null, tMs: null, perfNow: 0, wallClock: now,
+  }]);
+  await insertBlockSurvey(db, s.sessionId, {
+    blockIndex: 1, condition: "A", questionnaireVersion: "full-v1",
+    trustResponses: Array.from({ length: 12 }, (_, i) => ({ itemId: `jian-${i + 1}`, raw: 4, scored: 4 })),
+    trustMean: 4, fairness1: 4, fairness2: 4, fairnessMean: 4, tension: 3,
+    frustrationTlx: 25, frustrationTlxTouched: true, nWrongDetected: 0, anxiety: null, submittedAt: now,
+  });
+  await insertExitSurvey(db, s.sessionId, {
+    ageRange: "18-24", gender: null, education: "bachelors", socialMediaUse: "daily",
+    labelExposure: "sometimes", preferredCondition: "A", comment: "Synthetic route audit", submittedAt: now,
+  });
+  return s;
+}
+
+describe("admin route-wide authentication", () => {
+  it.each(ADMIN_OPERATIONS)("requires a valid header for %s %s", async (method, path, success) => {
+    const s = await seedResponses(1);
+    const saved = responseRows(s.sessionId);
+    const app = makeApp(db, "audit-admin-secret", { bank: BANK });
+    const url = `/api/admin${path.replace(":id", s.sessionId)}`;
+    for (const token of [undefined, "wrong"]) {
+      const req = request(app)[method](url);
+      if (token) req.set("x-admin-token", token);
+      const res = await req.expect(401);
+      expect(res.body.error).toBe("unauthorized");
+    }
+    await request(app)[method](`${url}?token=audit-admin-secret&token=wrong`).expect(401);
+    expect((await getSession(db, s.sessionId))?.status).toBe("in_progress");
+    expect(responseRows(s.sessionId)).toEqual(saved);
+    await request(app)[method](url).set("x-admin-token", "audit-admin-secret").expect(success);
+  });
+
+  it.each(ADMIN_OPERATIONS)("denies tokenless non-loopback %s %s", async (method, path) => {
+    const s = await seedResponses(1);
+    const saved = responseRows(s.sessionId);
+    const app = makeApp(db, undefined, { remoteAddress: "192.0.2.10", bank: BANK });
+    const res = await request(app)[method](`/api/admin${path.replace(":id", s.sessionId)}`).expect(403);
+    expect(res.body.error).toBe("forbidden");
+    expect((await getSession(db, s.sessionId))?.status).toBe("in_progress");
+    expect(responseRows(s.sessionId)).toEqual(saved);
+  });
+
+  it.each(DOWNLOADS)("accepts download-query authentication for %s without exporting secrets", async (name) => {
+    const hash = "d".repeat(64);
+    const salt = "synthetic-private-participant-salt";
+    const token = "synthetic-private-admin-token";
+    await seedResponses(1, hash);
+    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('participant_salt', ?)").run(salt);
+    const app = makeApp(db, token);
+    const res = await request(app).get(`/api/admin/export/${name}`).query({ token }).expect(200);
+    const text = res.text ?? JSON.stringify(res.body);
+    expect(text.length).toBeGreaterThan(0);
+    for (const secret of [hash, salt, token]) {
+      expect(text).not.toContain(secret);
+      expect(JSON.stringify(res.headers)).not.toContain(secret);
+    }
+    expect(text).not.toMatch(/participant_hash|participantHash|participant_salt|participantSalt|adminToken|authToken/);
+    expect(res.headers["cache-control"]).toBe("no-store");
+  });
+});
+
+describe("admin validation and read safety", () => {
+  it.each(["-1", "1.5", "1e2", "9007199254740992", "NaN", "1 OR 1=1"])("rejects invalid assignment pid %s", async (pid) => {
+    const app = makeApp(db, "secret", { bank: BANK });
+    const res = await request(app).get(`/api/admin/assignments/${encodeURIComponent(pid)}`).set("x-admin-token", "secret").expect(400);
+    expect(res.body.error).toBe("validation");
+    expect(db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 0 });
+  });
+
+  it("accepts every supported cohort and rejects malformed scalar or repeated cohort input", async () => {
+    const app = makeApp(db, "secret");
+    for (const protocolVersion of ["all", "legacy-full-v1", "calibrated-brief-v1", "calibrated-full-v1", "calibrated-media-full-v1"]) {
+      const res = await request(app).get("/api/admin/kpis").query({ protocolVersion }).set("x-admin-token", "secret").expect(200);
+      expect(res.body.cohort).toBe(protocolVersion);
+    }
+    for (const query of ["protocolVersion=%5Bobject%20Object%5D", "protocolVersion=null", "protocolVersion=ALL", "protocolVersion=all&protocolVersion=all"]) {
+      await request(app).get(`/api/admin/kpis?${query}`).set("x-admin-token", "secret").expect(400);
+    }
+  });
+
+  it.each(["__proto__", "toString", ".env", "../.env", "trials.csv.bak", "participants.csv/extra"])("rejects unlisted export %s", async (name) => {
+    await request(makeApp(db, "secret")).get(`/api/admin/export/${encodeURIComponent(name)}`).set("x-admin-token", "secret").expect(404);
+  });
+
+  it("disables caching for every admin read, including sessions and assignment previews", async () => {
+    const s = await seedResponses(1, "e".repeat(64));
+    const before = db.serialize();
+    const app = makeApp(db, "secret", { bank: BANK });
+    for (const [method, path] of ADMIN_OPERATIONS) {
+      if (method !== "get") continue;
+      const res = await request(app).get(`/api/admin${path}`).set("x-admin-token", "secret").expect(200);
+      expect(res.headers["cache-control"]).toBe("no-store");
+      expect(JSON.stringify(res.body)).not.toContain("e".repeat(64));
+    }
+    expect(db.serialize()).toEqual(before);
+    expect((await getSession(db, s.sessionId))?.status).toBe("in_progress");
+    const denied = await request(app).get("/api/admin/sessions").expect(401);
+    expect(denied.headers["cache-control"]).toBe("no-store");
+  });
+
+  it.each(["not-a-uuid", "' OR 1=1 --", "missing-session"])("unknown session id %s cannot mutate other sessions", async (id) => {
+    const s = await seedResponses(1);
+    const before = db.serialize();
+    const app = makeApp(db, "secret");
+    const encoded = encodeURIComponent(id);
+    for (const [method, suffix] of [["post", "/abandon"], ["delete", ""]] as const) {
+      const res = await request(app)[method](`/api/admin/sessions/${encoded}${suffix}`).set("x-admin-token", "secret").expect(404);
+      expect(res.body.error).toBe("not_found");
+    }
+    expect(db.serialize()).toEqual(before);
+    expect((await getSession(db, s.sessionId))?.status).toBe("in_progress");
+  });
+
+  it("wrong HTTP methods cannot invoke admin mutations", async () => {
+    const s = await seedResponses(1);
+    const before = db.serialize();
+    const app = makeApp(db, "secret");
+    await request(app).get(`/api/admin/sessions/${s.sessionId}/abandon`).set("x-admin-token", "secret").expect(404);
+    await request(app).get(`/api/admin/sessions/${s.sessionId}`).set("x-admin-token", "secret").expect(404);
+    await request(app).post("/api/admin/sessions").set("x-admin-token", "secret").expect(404);
+    expect(db.serialize()).toEqual(before);
+  });
+});
+
+describe("admin mutation data retention", () => {
+  it("abandon preserves every saved response, blocks retries, and keeps the participation hash", async () => {
+    const hash = "a".repeat(64);
+    const s = await seedResponses(1, hash);
+    const other = await seedResponses(2);
+    const saved = responseRows(s.sessionId);
+    const otherRows = responseRows(other.sessionId);
+    const app = makeApp(db, "secret");
+    await request(app).post(`/api/admin/sessions/${s.sessionId}/abandon`).set("x-admin-token", "secret").expect(204);
+    expect((await getSession(db, s.sessionId))?.status).toBe("abandoned");
+    expect(responseRows(s.sessionId)).toEqual(saved);
+    expect(db.prepare("SELECT participant_hash FROM sessions WHERE session_id = ?").get(s.sessionId)).toEqual({ participant_hash: hash });
+    await request(app).post(`/api/admin/sessions/${s.sessionId}/abandon`).set("x-admin-token", "secret").expect(409);
+    expect(responseRows(s.sessionId)).toEqual(saved);
+    expect(responseRows(other.sessionId)).toEqual(otherRows);
+    expect((await getSession(db, other.sessionId))?.status).toBe("in_progress");
+  });
+
+  it.each(["in_progress", "completed", "abandoned"] as const)("withdrawal deletes all child rows for %s only", async (status) => {
+    const s = await seedResponses(1, "b".repeat(64));
+    const other = await seedResponses(2);
+    if (status !== "in_progress") await setStatus(db, s.sessionId, status, new Date().toISOString());
+    const otherRows = responseRows(other.sessionId);
+    for (const rows of Object.values(responseRows(s.sessionId))) expect(rows.length).toBeGreaterThan(0);
+    const app = makeApp(db, "secret");
+    await request(app).delete(`/api/admin/sessions/${s.sessionId}`).set("x-admin-token", "secret").expect(204);
+    expect(await getSession(db, s.sessionId)).toBeNull();
+    for (const rows of Object.values(responseRows(s.sessionId))) expect(rows).toEqual([]);
+    expect(responseRows(other.sessionId)).toEqual(otherRows);
+    expect((await getSession(db, other.sessionId))?.status).toBe("in_progress");
+    await request(app).delete(`/api/admin/sessions/${s.sessionId}`).set("x-admin-token", "secret").expect(404);
   });
 });

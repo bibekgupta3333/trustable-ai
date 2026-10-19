@@ -9,6 +9,7 @@ import { ConflictError, participantSalt as resolveParticipantSalt } from "./db/r
 import { adminRouter } from "./routes/admin.js";
 import { HttpError, ValidationError, participantRouter } from "./routes/participant.js";
 import { sessionsRouter } from "./routes/sessions.js";
+import { safeErrorDetails, safeRequestDetails } from "./errors.js";
 
 export interface AppDeps {
   db: DatabaseInput;
@@ -53,7 +54,7 @@ export async function createApp(deps: AppDeps): Promise<express.Express> {
     });
   }
 
-  const onError: ErrorRequestHandler = (err, _req, res, _next) => {
+  const onError: ErrorRequestHandler = (err, req, res, _next) => {
     void _next;
     if (res.headersSent) return;
     if (err instanceof ConflictError) return void res.status(409).json({ error: "conflict", detail: err.message });
@@ -63,9 +64,7 @@ export async function createApp(deps: AppDeps): Promise<express.Express> {
     if (e?.type === "entity.parse.failed" || e?.status === 400)
       return void res.status(400).json({ error: "validation", detail: "malformed request body" });
     if (e?.type === "entity.too.large") return void res.status(413).json({ error: "too_large" });
-    // Database errors may contain SQL, bound participation codes or connection strings.
-    // Keep the public response and fallback log independent of the exception contents.
-    console.error("Unhandled API request error");
+    console.error("Unhandled API request error", { ...safeErrorDetails(err), ...safeRequestDetails(req) });
     res.status(500).json({ error: "internal" });
   };
   app.use(onError);

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { DatabaseError } from "@tursodatabase/serverless";
+import { Connection as SDKConnection, DatabaseError } from "@tursodatabase/serverless";
+import request from "supertest";
+import { createApp } from "../app";
+import { loadPostBank } from "../../shared/labelEngine";
 import { asAsyncDatabase, openTursoDatabase, type StudyDatabase } from "./async";
 import type Database from "better-sqlite3";
 import { openDb } from "./db";
@@ -614,6 +617,10 @@ function mockTursoHttp() {
   vi.stubGlobal("fetch", fetch);
   return {
     fetch, log, created, streams,
+    expireStreams: () => {
+      for (const { sqlite } of streams.values()) sqlite.close();
+      streams.clear();
+    },
     cleanup: () => {
       for (const { sqlite } of streams.values()) sqlite.close();
       streams.clear();
@@ -629,6 +636,55 @@ describe("Turso adapter with the real serverless SDK and SQLite-backed HTTP stre
   let db: StudyDatabase;
   beforeEach(() => { http = mockTursoHttp(); db = openTursoDatabase(url, "test-token"); });
   afterEach(async () => { try { await db.close(); } finally { http.cleanup(); } });
+
+  it("accepts consent and admin reads after idle streams expire between top-level requests", async () => {
+    await db.exec(readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8"));
+    const session = await createSession(db, assignment, opts);
+    http.expireStreams(); // Simulate the participant spending time reading consent.
+    const consentAt = "2026-10-19T21:00:00.000Z";
+    const saved = await db.transaction(async () => {
+      await recordConsent(db, session.sessionId, consentAt);
+      await updateCursor(db, session.sessionId, { blockIndex: 1, positionInBlock: 1, phase: "instructions" });
+      await touchActivity(db, session.sessionId, consentAt);
+      return getSession(db, session.sessionId);
+    }).immediate();
+    expect(saved).toMatchObject({ consentAt, cursor: { phase: "instructions" } });
+    http.expireStreams(); // Simulate another pause before the admin's next poll.
+    expect(await listSessions(db)).toEqual([expect.objectContaining({ sessionId: session.sessionId, lastActivityAt: consentAt })]);
+    expect(http.streams.size).toBe(0);
+  });
+
+  it("serves session creation, consent after idle expiry, concurrent admin requests and resumed state through actual routes", async () => {
+    await db.exec(readFileSync(fileURLToPath(new URL("./schema.sql", import.meta.url)), "utf8"));
+    const bank = loadPostBank(JSON.parse(readFileSync(fileURLToPath(new URL("../../shared/data/posts.json", import.meta.url)), "utf8")));
+    const app = await createApp({ db, bank, appVersion: "lifecycle-test", participantSalt: "test-salt", adminToken: "test-admin" });
+    const participantCode = "fictional-lifecycle-test-only";
+    const started = await request(app).post("/api/sessions").send({ participantCode }).expect(201);
+    const id = started.body.sessionId as string;
+    expect(started.body).toMatchObject({ protocolVersion: "calibrated-full-v1", cursor: { phase: "consent" } });
+    expect(started.body.blocks.flatMap((block: any) => block.postOrder)).toHaveLength(8);
+    http.expireStreams();
+    const consent = await request(app).post(`/api/sessions/${id}/consent`).send({}).expect(200);
+    expect(consent.body).toMatchObject({ sessionId: id, cursor: { phase: "instructions" } });
+    expect(consent.body.consentAt).toEqual(expect.any(String));
+    http.expireStreams();
+    const [sessions, kpis, index, csv] = await Promise.all([
+      request(app).get("/api/admin/sessions").set("x-admin-token", "test-admin").expect(200),
+      request(app).get("/api/admin/kpis").set("x-admin-token", "test-admin").expect(200),
+      request(app).get("/api/admin/export").set("x-admin-token", "test-admin").expect(200),
+      request(app).get("/api/admin/export/participants.csv").set("x-admin-token", "test-admin").expect(200),
+    ]);
+    expect(sessions.body).toEqual([expect.objectContaining({ sessionId: id, status: "in_progress", plannedTrials: 8 })]);
+    expect(kpis.body).toEqual(expect.any(Object));
+    expect(index.body).toBeTruthy();
+    expect(csv.headers["content-type"]).toContain("text/csv");
+    expect(csv.text).toContain(id);
+    http.expireStreams();
+    const resumed = await request(app).post("/api/sessions").send({ participantCode }).expect(200);
+    expect(resumed.body).toMatchObject({ sessionId: id, consentAt: consent.body.consentAt, resumeCount: 1, cursor: { phase: "instructions" } });
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM sessions").get()).toEqual({ n: 1 });
+    expect(http.streams.size).toBe(0);
+  });
 
   it("is lazy, uses HTTPS/authentication, and initializes foreign keys before BEGIN on the same stream", async () => {
     expect(http.fetch).not.toHaveBeenCalled();
@@ -681,9 +737,12 @@ describe("Turso adapter with the real serverless SDK and SQLite-backed HTTP stre
       await db.transaction(async () => { await db.prepare("INSERT INTO example VALUES (?)").run(3); })();
       await expect(db.close()).rejects.toThrow("inside a transaction");
     }).immediate();
+    expect(http.created).toHaveLength(2); // Setup and the complete nested transaction.
+    expect(http.log.filter((l) => /SAVEPOINT|INSERT INTO example|COMMIT/.test(l.sql))
+      .every((l) => l.stream === 2)).toBe(true);
     expect(await db.prepare("SELECT * FROM example ORDER BY n").all()).toEqual([{ n: 1 }, { n: 3 }]);
     expect(http.log.map((l) => l.sql)).toContain("ROLLBACK TO SAVEPOINT study_sp_1");
-    expect(http.created).toHaveLength(1);
+    expect(http.created).toHaveLength(3); // The subsequent read owns another stream.
   });
 
   it("queues other requests across a failing transaction and rolls back all nested writes", async () => {
@@ -706,8 +765,8 @@ describe("Turso adapter with the real serverless SDK and SQLite-backed HTTP stre
     await failure;
     expect(await read).toEqual([]);
     // The failed stream is closed; a fresh stream gets FK setup before the next query.
-    expect(http.created).toHaveLength(2);
-    expect(http.log.filter((l) => l.stream === 2)[0].sql).toBe("PRAGMA foreign_keys = ON");
+    expect(http.created).toHaveLength(3);
+    expect(http.log.filter((l) => l.stream === 3)[0].sql).toBe("PRAGMA foreign_keys = ON");
   });
 
   it("serializes sibling savepoints without mixing their rollbacks", async () => {
@@ -763,21 +822,21 @@ describe("Turso adapter with the real serverless SDK and SQLite-backed HTTP stre
     expect(await insertEvents(db, sessionId, events)).toBe(5000);
     expect(eventRequests(since)).toHaveLength(100);
     expect(eventRequests(since).every((step: any) => step.stmt.args.length === 550)).toBe(true);
-    // Includes BEGIN and COMMIT; excludes setup and later verification queries.
-    expect(http.fetch.mock.calls.length - since).toBe(102);
+    // One FK setup, BEGIN, 100 inserts, COMMIT and close; no per-row connections.
+    expect(http.fetch.mock.calls.length - since).toBe(104);
     expect(await db.prepare("SELECT COUNT(*) AS n FROM events WHERE session_id = ?").get(sessionId)).toEqual({ n: 5000 });
 
     since = http.fetch.mock.calls.length;
     expect(await insertEvents(db, sessionId, events)).toBe(0);
     expect(eventRequests(since)).toHaveLength(100);
-    expect(http.fetch.mock.calls.length - since).toBe(102);
+    expect(http.fetch.mock.calls.length - since).toBe(104);
 
     // First chunk is all duplicates; the second mixes 10 duplicates and 25 new rows.
     const tail = Array.from({ length: 85 }, (_, i) => ev(4941 + i));
     since = http.fetch.mock.calls.length;
     expect(await insertEvents(db, sessionId, tail)).toBe(25);
     expect(eventRequests(since).map((step: any) => step.stmt.args.length)).toEqual([550, 385]);
-    expect(http.fetch.mock.calls.length - since).toBe(4);
+    expect(http.fetch.mock.calls.length - since).toBe(6);
     expect(await db.prepare("SELECT COUNT(*) AS n, MIN(seq) AS first, MAX(seq) AS last FROM events WHERE session_id = ?")
       .get(sessionId)).toEqual({ n: 5025, first: 1, last: 5025 });
     expect(await db.prepare("SELECT seq, type, factor_key FROM events WHERE session_id = ? AND seq = ?")
@@ -842,9 +901,15 @@ describe("Turso adapter with the real serverless SDK and SQLite-backed HTTP stre
   it("reports a lost write response without replaying a possibly committed write", async () => {
     await db.exec("CREATE TABLE example (n INTEGER)");
     const transport = http.fetch.getMockImplementation()!;
-    http.fetch.mockImplementationOnce(async (...args) => {
-      await transport(...args);
-      throw new Error("lost write response");
+    let lost = false;
+    http.fetch.mockImplementation(async (...args) => {
+      const request = JSON.parse(args[1]!.body as string);
+      const response = await transport(...args);
+      if (!lost && request.batch?.steps.some((step: any) => step.stmt.sql === "INSERT INTO example VALUES (?)")) {
+        lost = true;
+        throw new Error("lost write response");
+      }
+      return response;
     });
     await expect(db.prepare("INSERT INTO example VALUES (?)").run(1)).rejects.toThrow("lost write response");
     expect(http.log.filter((l) => l.sql === "INSERT INTO example VALUES (?)")).toHaveLength(1);
@@ -862,9 +927,33 @@ describe("Turso adapter with the real serverless SDK and SQLite-backed HTTP stre
     expect(http.log.some((l) => l.sql === "COMMIT")).toBe(false);
   });
 
+  it("keeps confirmed commits successful and original failures intact when SDK cleanup rejects", async () => {
+    const originalClose = SDKConnection.prototype.close;
+    const close = vi.spyOn(SDKConnection.prototype, "close").mockImplementation(async function (this: SDKConnection) {
+      await originalClose.call(this);
+      throw new Error("cleanup failed");
+    });
+    try {
+      await db.exec("CREATE TABLE example (n INTEGER)");
+      const result = await db.transaction(async () => {
+        await db.prepare("INSERT INTO example VALUES (1)").run();
+        return "confirmed commit";
+      }).immediate();
+      expect(result).toBe("confirmed commit");
+      expect(http.log.filter((l) => l.sql === "INSERT INTO example VALUES (1)")).toHaveLength(1);
+      await expect(db.transaction(async () => {
+        await db.prepare("INSERT INTO example VALUES (2)").run();
+        throw new Error("original operation failed");
+      })()).rejects.toThrow("original operation failed");
+      expect(await db.prepare("SELECT * FROM example").all()).toEqual([{ n: 1 }]);
+      expect(close).toHaveBeenCalledTimes(4);
+      expect(http.streams.size).toBe(0);
+    } finally { close.mockRestore(); }
+  });
+
   it("closes the SDK stream, is idempotent and rejects subsequent operations", async () => {
     await db.prepare("SELECT 1 AS n").get();
-    expect(http.streams.size).toBe(1);
+    expect(http.streams.size).toBe(0); // Top-level reads clean up without db.close().
     await db.close();
     expect(http.streams.size).toBe(0);
     const calls = http.fetch.mock.calls.length;

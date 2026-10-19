@@ -164,7 +164,11 @@ export function StudyProvider({ children }: { children: React.ReactNode }): JSX.
         navigate(routeForCursor(session.cursor), { replace: true });
         return true;
       } catch (e) {
-        if (e instanceof ApiClientError && e.status === 404) {
+        // Resume rejects completed/abandoned sessions with 409 conflict. Those IDs
+        // cannot resume; keep storage for transient failures and unrelated errors.
+        const closedSession = e instanceof ApiClientError && e.status === 409
+          && e.body !== null && typeof e.body === "object" && "error" in e.body && e.body.error === "conflict";
+        if (e instanceof ApiClientError && (e.status === 404 || closedSession)) {
           setStoredSessionId(null);
           dispatch({ type: "RESET" });
         } else {

@@ -162,61 +162,51 @@ function numericRow(row: Record<string, any> | undefined): Record<string, any> |
   ]));
 }
 
-/**
- * One lazy native SDK Connection owns one server stream. The mutex covers the whole
- * BEGIN..COMMIT window, not just each HTTP request. We deliberately use raw SQL on
- * that connection rather than transactionAsync(), whose fresh stream would lose
- * the foreign_keys pragma set before BEGIN. ALS routes nested work to the same stream.
- */
+interface RemoteConnection extends Connection {
+  sdk: TursoConnection;
+}
+
+/** Each top-level operation owns a fresh stream; nested transactions reuse it via ALS. */
 export function openTursoDatabase(url: string, authToken: string): StudyDatabase {
   const endpoint = validateTursoUrl(url);
   if (!authToken?.trim()) throw new Error("Turso requires an authentication token");
   const mutex = new Mutex();
-  const context = new AsyncLocalStorage<TransactionContext<Connection>>();
-  let remote: TursoConnection | undefined;
+  const context = new AsyncLocalStorage<TransactionContext<RemoteConnection>>();
   let closed = false;
 
-  const getConnection = async (): Promise<TursoConnection> => {
+  const outside = <T>(fn: (connection: RemoteConnection) => Promise<T>): Promise<T> => mutex.run(async () => {
     if (closed) throw new Error("Database is closed");
-    if (!remote) {
-      remote = connect({ url: endpoint, authToken: authToken.trim(), defaultQueryTimeout: 15_000 });
-      remote.defaultSafeIntegers(true);
-      // New streams start with their own PRAGMA state. Initialize before any BEGIN.
-      await remote.exec("PRAGMA foreign_keys = ON");
-      // Turso Cloud manages lock waiting; its SQL API rejects busy_timeout.
-    }
-    return remote;
-  };
-  const outside = <T>(fn: (connection: Connection) => Promise<T>): Promise<T> => mutex.run(async () => {
+    const sdk = connect({ url: endpoint, authToken: authToken.trim(), defaultQueryTimeout: 15_000 });
     try {
-      const sdk = await getConnection();
-      return await fn({ exec: async (sql) => {
+      sdk.defaultSafeIntegers(true);
+      // New streams start with their own PRAGMA state. Initialize before any BEGIN.
+      await sdk.exec("PRAGMA foreign_keys = ON");
+      // Turso Cloud manages lock waiting; its SQL API rejects busy_timeout.
+      return await fn({ sdk, exec: async (sql) => {
         if (sql !== "BEGIN" && sql !== "BEGIN IMMEDIATE" && !sdk.inTransaction) {
           throw new Error("Turso transaction stream was lost");
         }
         await sdk.exec(sql);
       } });
-    } catch (error) {
-      // Never replay an uncertain write. Discard the stream; the next operation
-      // gets a fresh one with pragmas initialized again, including after expiry.
-      const failed = remote;
-      remote = undefined;
-      try { await failed?.close(); } catch { /* Preserve the operation's error. */ }
-      throw error;
+    } finally {
+      // No stream survives participant think time or a warm function's idle gap.
+      // Cleanup must not turn a confirmed commit/result into an apparent failure,
+      // or replace the original operation error. Never replay an uncertain write.
+      try { await sdk.close(); } catch { /* Best-effort remote stream cleanup. */ }
     }
   });
   const execute = <T>(fn: (sdk: TursoConnection) => Promise<T>): Promise<T> => {
     const scope = context.getStore();
     if (scope && !scope.active) return Promise.reject(new Error("Transaction scope is no longer active"));
-    const run = async () => {
-      if (scope && !scope.active) throw new Error("Transaction scope is no longer active");
-      const sdk = await getConnection();
+    if (!scope) return outside(({ sdk }) => fn(sdk));
+    return scope.gate.run(async () => {
+      if (!scope.active) throw new Error("Transaction scope is no longer active");
+      const { sdk } = scope.connection;
       // The SDK clears its baton after a transport failure. Even if the callback
       // catches that error, never continue its work on a fresh autocommit stream.
-      if (scope && !sdk.inTransaction) throw new Error("Turso transaction stream was lost");
+      if (!sdk.inTransaction) throw new Error("Turso transaction stream was lost");
       return fn(sdk);
-    };
-    return scope ? scope.gate.run(run) : outside(run);
+    });
   };
   return {
     prepare: (sql) => ({
@@ -236,9 +226,6 @@ export function openTursoDatabase(url: string, authToken: string): StudyDatabase
       if (context.getStore()) return Promise.reject(new Error("Cannot close a database inside a transaction"));
       return mutex.run(async () => {
         closed = true;
-        const current = remote;
-        remote = undefined;
-        await current?.close();
       });
     },
   };

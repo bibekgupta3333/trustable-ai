@@ -58,6 +58,8 @@ export function adminRouter(deps: { db: DatabaseInput; adminToken?: string; bank
 
   // Header for API calls, ?token= for downloads.
   router.use((req, res, next) => {
+    // Session access identifiers and authenticated responses must not be cached.
+    res.setHeader("Cache-Control", "no-store");
     const verdict = adminAccess(adminToken, {
       header: req.get("x-admin-token"),
       queryToken: typeof req.query.token === "string" ? req.query.token : undefined,

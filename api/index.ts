@@ -1,5 +1,6 @@
 import type { Request, Response } from "express";
 import { createRuntime } from "../server/runtime.js";
+import { safeErrorDetails } from "../server/errors.js";
 
 /** Cache one initialized application per warm function; failed startup remains retryable. */
 export function createHandler(initialize: typeof createRuntime = createRuntime) {
@@ -20,7 +21,7 @@ export function createHandler(initialize: typeof createRuntime = createRuntime) 
       });
     } catch (error) {
       // Connection errors may contain credentials/host details: never send them to clients.
-      console.error("Backend startup failed", error instanceof Error ? error.name : "unknown error");
+      console.error("Backend startup failed", safeErrorDetails(error));
       if (!res.headersSent) {
         // Startup can fail before Express decorates the native response object.
         res.statusCode = 503;

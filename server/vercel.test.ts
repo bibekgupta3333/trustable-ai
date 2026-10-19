@@ -30,8 +30,10 @@ describe("Vercel API entry point", () => {
 
   it("retries failed startup without returning connection secrets", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const startupError = new Error("postgresql://private:secret@database.invalid/study");
+    startupError.name = "private-secret-name";
     const initialize = vi.fn<typeof createRuntime>()
-      .mockRejectedValueOnce(new Error("postgresql://private:secret@database.invalid/study"))
+      .mockRejectedValueOnce(startupError)
       .mockResolvedValue(runtime());
     const app = express(); app.use(createHandler(initialize));
     try {

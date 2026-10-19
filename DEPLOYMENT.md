@@ -17,6 +17,8 @@ The frontend calls relative `/api` URLs. A second backend domain and separate CO
 
 Vercel runs the compiled backend with native Node ESM. Keep `.js` extensions on relative imports in API/server/shared TypeScript dependencies, and `with { type: "json" }` on runtime JSON imports. Local `tsx` execution can hide these deployment errors; the native-module regression test checks compiled imports without that loader.
 
+The Turso adapter opens a fresh SQL stream for each top-level operation or transaction, closes it afterward, and keeps nested statements on that transaction's stream. Streams are not reused across participant pauses or warm-function idle gaps. A failed or uncertain write is never automatically replayed. Cleanup failures cannot turn a confirmed commit into an apparent save failure.
+
 ## 1. Bootstrap the Turso schema before deploying
 
 Use this database URL:
@@ -96,6 +98,10 @@ After successful bootstrap and variable configuration, deploy through Vercel's d
 6. Open `/admin`, enter the admin token and verify missing/incorrect tokens are rejected.
 7. Download a CSV and check saved rows. Verify data remains after a redeployment or cold start.
 8. Inspect logs for connection/schema errors without exposing credentials.
+
+If production reports `ERR_MODULE_NOT_FOUND` while a newer Preview works, compare deployment IDs and commits. The production domain can still point to an older deployment. Confirm **Production → Branch Tracking → dev**, configure the required variables in **Production**, and create a Production deployment from the updated `dev` commit. A new Preview URL alone does not update production.
+
+Unexpected request errors log only safe classifications (known error name, SQLite code, upstream HTTP status and route template). They omit SQL, raw error messages, credentials and session identifiers. Use those classifications to diagnose later failures; a historical generic `Unhandled API request error` does not establish its underlying cause.
 
 A `503 backend_unavailable` can indicate missing variables, an invalid token, a connection failure or schema bootstrap still required. Check settings and bootstrap before inviting participants. Treat ambiguous participant-save failures carefully; session and duplicate checks remain authoritative.
 

@@ -381,7 +381,9 @@ describe("trials", () => {
     try {
       const failed = await request(app).post(`/api/sessions/${s.sessionId}/trials`).send(trialBody(s, 1, 1)).expect(500);
       expect(failed.body).toEqual({ error: "internal" });
-      expect(errorLog).toHaveBeenCalledWith("Unhandled API request error");
+      expect(errorLog).toHaveBeenCalledWith("Unhandled API request error", {
+        name: "SqliteError", code: "SQLITE_CONSTRAINT_TRIGGER", method: "POST", route: "/api/sessions/:id/trials",
+      });
       expect(db.prepare("SELECT COUNT(*) AS n FROM trials WHERE session_id = ?").get(s.sessionId)).toEqual({ n: 0 });
       expect(db.prepare("SELECT started_at, ended_at FROM blocks WHERE session_id = ? AND block_index = 1")
         .get(s.sessionId)).toEqual({ started_at: null, ended_at: null });
