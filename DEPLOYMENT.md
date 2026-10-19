@@ -62,6 +62,12 @@ Import the `trustable-ai` repository:
 
 There is no production `npm start` process on Vercel. Express runs as a Node function; Vercel serves the frontend assets. React Router paths such as `/start`, `/survey/1` and `/admin` receive the SPA; `/api/...` goes to Express. Keep frontend and backend in this single project. See [Vercel Vite support](https://vercel.com/docs/frameworks/frontend/vite) and [Node runtime](https://vercel.com/docs/functions/runtimes/node-js).
 
+### Deploy the dev branch
+
+`vercel.json` enables automatic Git deployments for `dev` and disables them for other branches. Commit and push this configuration to `dev` so Vercel can use it.
+
+To have `dev` update the production domain, set **Project Settings → Environments → Production → Branch Tracking** to **dev**, then save. The production branch is a Vercel project setting; `git.deploymentEnabled` controls which branches trigger deployments and does not select the production branch. See [Vercel branch tracking](https://vercel.com/docs/git#customizing-the-production-branch) and [Git configuration](https://vercel.com/docs/project-configuration/git-configuration).
+
 ## 3. Set the four required Vercel variables
 
 In Vercel → Project → Settings → Environment Variables:

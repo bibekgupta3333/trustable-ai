@@ -11,8 +11,22 @@
     }
   },
   "routes": [
-    { "src": "/api(?:/.*)?", "dest": "/api/index.ts" },
-    { "handle": "filesystem" },
-    { "src": "/.*", "dest": "/index.html" }
-  ]
+    {
+      "src": "/api(?:/.*)?",
+      "dest": "/api/index.ts"
+    },
+    {
+      "handle": "filesystem"
+    },
+    {
+      "src": "/.*",
+      "dest": "/index.html"
+    }
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "*": false,
+      "dev": true
+    }
+  }
 }
