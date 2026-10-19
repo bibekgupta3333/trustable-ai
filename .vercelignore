@@ -1,6 +1,7 @@
 .git/
 node_modules/
-data/
+# Exclude only the local database folder; shared/data contains required JSON.
+/data/
 .gstack/
 docs/screenshots/
 *.db
